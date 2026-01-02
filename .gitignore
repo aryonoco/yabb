@@ -1,0 +1,36 @@
+# Nim compilation cache
+nimcache/
+nimblecache/
+
+# Generated documentation
+htmldocs/
+docs/
+
+# Nimble develop workflow files
+nimble.develop
+nimble.paths
+nimbledeps/
+
+# Compiled binaries
+bin/
+*.exe
+*.dll
+*.so
+*.dylib
+
+# Build directories
+build/
+out/
+
+# Editor/IDE
+*.swp
+*.swo
+*~
+.idea/
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Project-specific binary
+yabb

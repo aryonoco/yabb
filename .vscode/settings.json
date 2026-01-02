@@ -1,0 +1,17 @@
+{
+  "nim.buildOnSave": false,
+  "nim.lintOnSave": true,
+  "nim.buildCommand": "c",
+  "nim.project": ["src/yabb.nim"],
+  "nim.test.entryPoint": "tests/test_all.nim",
+  "editor.formatOnSave": true,
+  "[nim]": {
+    "editor.defaultFormatter": null,
+    "editor.tabSize": 2
+  },
+  "files.associations": {
+    "*.nim": "nim",
+    "*.nims": "nim",
+    "*.nimble": "nim"
+  }
+}
