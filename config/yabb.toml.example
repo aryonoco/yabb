@@ -1,0 +1,41 @@
+# YABB - Yet Another BTRFS Backup
+# Example configuration file
+# Copy to /etc/yabb.toml and customize
+
+[paths]
+# Source directory to backup (must be on btrfs)
+src_dir = "/data"
+
+# Destination for received snapshots (must be on btrfs)
+dst_dir = "/backup"
+
+# Directory to store local snapshots (must be on btrfs)
+snapshot_dir = "/snapshots"
+
+[compression]
+# Compression algorithm: zstd, zlib, or lzo
+algorithm = "zstd"
+
+# Compression level (1-15 for zstd, 1-9 for zlib/lzo)
+level = 3
+
+[retention]
+# Number of snapshots to keep per time period
+hourly = 24    # Keep 24 hourly snapshots
+daily = 7      # Keep 7 daily snapshots
+weekly = 4     # Keep 4 weekly snapshots
+monthly = 6    # Keep 6 monthly snapshots
+yearly = 2     # Keep 2 yearly snapshots
+
+[options]
+# Minimum free space required (MB)
+min_free_space = 1024
+
+# Maximum parallel operations (reserved for future use)
+max_parallel_jobs = 1
+
+# Retry attempts for failed operations
+retry_count = 3
+
+# Delay between retries (seconds)
+retry_delay = 5
