@@ -51,16 +51,12 @@ proc resetShutdown*() =
   ## Should NOT be used in production code
   shutdownRequested.store(false, moRelease)
 
-# Signal handler - exits immediately for interactive signals
+# Signal handler - graceful shutdown for all signals
 proc signalHandler(sig: cint) {.noconv.} =
   ## POSIX signal handler
-  ## For SIGINT (Ctrl+C): exit immediately - user expects this
-  ## For other signals: set flag for graceful shutdown
-  if sig == SIGINT:
-    # Ctrl+C should exit immediately
-    quit(130)  # 128 + SIGINT(2) = standard interrupted exit code
-  else:
-    requestShutdown()
+  ## All signals trigger graceful shutdown via flag
+  ## Cleanup happens via normal control flow (RAII, defer, etc.)
+  requestShutdown()
 
 proc installSignalHandlers*() =
   ## Install signal handlers for graceful shutdown

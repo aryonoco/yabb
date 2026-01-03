@@ -12,7 +12,7 @@
 import std/[algorithm, sets, times, sequtils]
 import ../wrappers/log
 import ../types
-import ../btrfs/[snapshot, operations]
+import ../btrfs/[snapshot, operations, properties]
 import ../utils/functional
 import policy
 
@@ -139,7 +139,18 @@ proc applyRetention*(
     info "No snapshots found for retention processing"
     return ok((kept: 0, deleted: 0))
 
-  let toKeep = selectSnapshotsToKeep(snapshots, retention)
+  var toKeep = selectSnapshotsToKeep(snapshots, retention)
+
+  # Always keep at least one full snapshot to prevent total data loss
+  # (Parent protection removed - btrfs snapshots are independent after receive)
+  let fullSnapshots = snapshots.filterIt(
+    getProperty(it.path, PropType).valueOr("") == "full"
+  )
+  if fullSnapshots.len > 0 and fullSnapshots.allIt(it.path notin toKeep):
+    # Add oldest full snapshot to keep set
+    let oldestFull = fullSnapshots.sortedByIt(it.timestamp)[0]
+    info "Keeping oldest full snapshot to prevent data loss", path = oldestFull.path
+    toKeep.incl(oldestFull.path)
 
   # Split into kept and to-delete using filter
   let keptSnapshots = snapshots.filterIt(it.path in toKeep)

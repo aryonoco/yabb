@@ -508,31 +508,32 @@ proc createBackupSnapshot*(
     "Streaming snapshot to destination"
   )
   if streamRes.isErr:
-    # Fallback to full send if incremental fails
+    # Cleanup source snapshot on failure to prevent chain corruption
+    warn "Send failed, cleaning up source snapshot", path = snapshotPath
+    discard deleteSubvolume(snapshotPath, config.dryRun)
+
+    # Don't silently fallback - user should investigate and use --force-full if needed
     if parentSnapshot.isSome and not doFullSnapshot:
-      warn "Incremental send failed, falling back to full send"
-      let fullSendArgs = compressArgs & @[snapshotPath]
-      let fullStreamRes = retry(
-        config.retryCount,
-        config.retryDelay,
-        proc(): YabbResult[void] {.raises: [].} =
-          runBtrfsSendReceive(fullSendArgs, $config.dstDir, config.dryRun),
-        "Streaming full snapshot (fallback)"
-      )
-      if fullStreamRes.isErr:
-        return err(fullStreamRes.error)
-    else:
-      return err(streamRes.error)
+      return err(btrfsError(
+        "Incremental send failed. Parent may be corrupted. " &
+        "Use --force-full for full backup. Error: " & streamRes.error.msg))
+    return err(streamRes.error)
 
   # Update chain length on all snapshots in the chain
   if not config.dryRun:
     let newChainLength = chainPos + 1
     discard updateChainLength(snapshotDir, newChainLength, config.dryRun)
 
-  # Verify the new snapshot
+  # Verify the source snapshot
   let verifyRes = verifySnapshot(snapshotPath, config)
   if verifyRes.isErr:
     return err(verifyRes.error)
+
+  # Verify the destination snapshot (btrfs send preserves xattrs)
+  let destPath = $config.dstDir / snapshotName
+  let destVerifyRes = verifySnapshot(destPath, config)
+  if destVerifyRes.isErr:
+    return err(btrfsError("Destination snapshot verification failed: " & destVerifyRes.error.msg))
 
   # Update last snapshot tracking
   saveLastSnapshot(snapshotPath, config.dryRun).isOkOr:
