@@ -68,9 +68,9 @@ retry_delay = 5
     check result.isOk
 
     let cfg = result.value
-    check cfg.srcDir == srcDir
-    check cfg.dstDir == dstDir
-    check cfg.snapshotDir == snapDir
+    check $cfg.srcDir == srcDir
+    check $cfg.dstDir == dstDir
+    check $cfg.snapshotDir == snapDir
     check cfg.compression.algo == caZstd
     check cfg.compression.level == 3
     check cfg.retention.hourly == 24
@@ -180,9 +180,9 @@ level = 3
 suite "Configuration validation":
   test "validateConfig returns error for non-existent source":
     let cfg = YabbConfig(
-      srcDir: "/nonexistent/source",
-      dstDir: "/tmp",  # This exists
-      snapshotDir: "/tmp",
+      srcDir: SourcePath("/nonexistent/source"),
+      dstDir: DestPath("/tmp"),  # This exists
+      snapshotDir: SnapshotDirPath("/tmp"),
       compression: CompressionLevel(algo: caZstd, level: 3),
       retention: RetentionPolicy(hourly: 24, daily: 7, weekly: 4, monthly: 6, yearly: 2),
       optimization: OptimizationConfig(enabled: true, balanceThreshold: 75, defragThreshold: 50),
@@ -202,9 +202,9 @@ suite "Configuration validation":
 
   test "validateConfig returns error for non-existent destination":
     let cfg = YabbConfig(
-      srcDir: "/tmp",  # This exists
-      dstDir: "/nonexistent/destination",
-      snapshotDir: "/tmp",
+      srcDir: SourcePath("/tmp"),  # This exists
+      dstDir: DestPath("/nonexistent/destination"),
+      snapshotDir: SnapshotDirPath("/tmp"),
       compression: CompressionLevel(algo: caZstd, level: 3),
       retention: RetentionPolicy(hourly: 24, daily: 7, weekly: 4, monthly: 6, yearly: 2),
       optimization: OptimizationConfig(enabled: true, balanceThreshold: 75, defragThreshold: 50),
@@ -228,9 +228,9 @@ suite "Configuration validation":
       skip()  # Skip test on non-btrfs systems
     else:
       let cfg = YabbConfig(
-        srcDir: "/tmp",
-        dstDir: "/tmp",
-        snapshotDir: "/tmp",
+        srcDir: SourcePath("/tmp"),
+        dstDir: DestPath("/tmp"),
+        snapshotDir: SnapshotDirPath("/tmp"),
         compression: CompressionLevel(algo: caZstd, level: 3),
         retention: RetentionPolicy(hourly: 24, daily: 7, weekly: 4, monthly: 6, yearly: 2),
         optimization: OptimizationConfig(enabled: true, balanceThreshold: 75, defragThreshold: 50),
@@ -253,9 +253,9 @@ suite "Configuration validation":
       skip()  # Skip test on btrfs systems
     else:
       let cfg = YabbConfig(
-        srcDir: "/tmp",
-        dstDir: "/tmp",
-        snapshotDir: "/tmp",
+        srcDir: SourcePath("/tmp"),
+        dstDir: DestPath("/tmp"),
+        snapshotDir: SnapshotDirPath("/tmp"),
         compression: CompressionLevel(algo: caZstd, level: 3),
         retention: RetentionPolicy(hourly: 24, daily: 7, weekly: 4, monthly: 6, yearly: 2),
         optimization: OptimizationConfig(enabled: true, balanceThreshold: 75, defragThreshold: 50),

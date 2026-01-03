@@ -14,6 +14,16 @@ bin           = @["yabb"]
 switch("experimental", "strictDefs")
 switch("experimental", "strictNotNil")  # Nil safety tracking
 
+# Release build optimizations (same as musl build, but dynamic glibc)
+when defined(release):
+  switch("opt", "speed")
+  switch("mm", "orc")
+  switch("define", "lto")
+  switch("passC", "-march=x86-64-v2")
+  switch("passC", "-mtune=skylake")
+  switch("passC", "-flto")
+  switch("passL", "-flto")
+
 # Dependencies
 
 requires "nim >= 2.2.0"
@@ -31,7 +41,7 @@ task test, "Run tests":
 task clean, "Clean build artifacts":
   exec "rm -rf bin/yabb bin/yabb-static nimcache/"
 
-task musl, "Build static musl binary for portable Linux deployment":
+task release, "Build optimized static musl binary (default for deployment)":
   exec "nim c " &
        "-d:release " &
        "--opt:speed " &
@@ -44,7 +54,12 @@ task musl, "Build static musl binary for portable Linux deployment":
        "--gcc.linkerexe:musl-gcc " &
        "--passL:-static " &
        "--passL:-flto " &
-       "-o:bin/yabb-static " &
+       "-o:bin/yabb " &
        "src/yabb.nim"
-  exec "strip -s bin/yabb-static"
-  echo "Built: bin/yabb-static"
+  exec "strip -s bin/yabb"
+  echo "Built: bin/yabb (static musl)"
+
+task glibc, "Build optimized dynamic glibc binary (for debugging)":
+  exec "nimble build -d:release"
+  exec "strip -s bin/yabb"
+  echo "Built: bin/yabb (dynamic glibc)"
