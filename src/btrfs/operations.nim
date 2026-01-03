@@ -27,10 +27,13 @@ proc checkBtrfsInstalled*(): YabbResult[void] =
 
 proc isBtrfsFilesystem*(path: string): YabbResult[bool] =
   ## Check if path is on a btrfs filesystem
-  let res = runCommand("df", ["-T", path])
+  ## Uses stat -f which works correctly for btrfs subvolumes (df -T shows "-")
+  let res = runCommand("stat", ["-f", "-c", "%T", path])
   if res.isErr:
     return err(res.error)
-  ok(res.value.output.contains("btrfs"))
+  if res.value.exitCode != 0:
+    return ok(false)
+  ok(res.value.output.strip().toLowerAscii() == "btrfs")
 
 proc getFilesystemUsage*(path: string): YabbResult[tuple[used, available: int64]] =
   ## Get filesystem usage in bytes
@@ -128,24 +131,40 @@ proc setReadonly*(path: string, readonly: bool, dryRun: bool = false): YabbResul
 
 proc setProperty*(path, property, value: string, dryRun: bool = false): YabbResult[void] =
   ## Set a property on a subvolume
+  ## Uses setfattr for user.* extended attributes, btrfs property for native properties
   if dryRun:
     debug "DRY_RUN: Would set property", path = path, property = property, value = value
     return ok()
 
-  let res = runBtrfs(["property", "set", path, property, value])
-  if res.isErr or res.value.exitCode != 0:
-    return err(btrfsError("Failed to set property " & property & " on " & path))
+  if property.startsWith("user."):
+    # Extended attributes use setfattr
+    let res = runCommand("setfattr", ["-n", property, "-v", value, path])
+    if res.isErr or res.value.exitCode != 0:
+      return err(btrfsError("Failed to set xattr " & property & " on " & path))
+  else:
+    # Native btrfs properties
+    let res = runBtrfs(["property", "set", path, property, value])
+    if res.isErr or res.value.exitCode != 0:
+      return err(btrfsError("Failed to set property " & property & " on " & path))
   ok()
 
 proc getProperty*(path, property: string): YabbResult[string] =
   ## Get a property value from a subvolume
-  let res = runBtrfs(["property", "get", path, property])
-  if res.isErr or res.value.exitCode != 0:
-    return err(btrfsError("Failed to get property " & property & " from " & path))
-
-  # Parse property value from output (format: "property=value")
-  let parts = res.value.output.strip().split('=')
-  if parts.len >= 2:
-    ok(parts[1].strip())
+  ## Uses getfattr for user.* extended attributes, btrfs property for native properties
+  if property.startsWith("user."):
+    # Extended attributes use getfattr
+    let res = runCommand("getfattr", ["--only-values", "-n", property, path])
+    if res.isErr or res.value.exitCode != 0:
+      return err(btrfsError("Failed to get xattr " & property & " from " & path))
+    ok(res.value.output.strip())
   else:
-    err(btrfsError("Invalid property format for " & property))
+    # Native btrfs properties
+    let res = runBtrfs(["property", "get", path, property])
+    if res.isErr or res.value.exitCode != 0:
+      return err(btrfsError("Failed to get property " & property & " from " & path))
+    # Parse property value from output (format: "property=value")
+    let parts = res.value.output.strip().split('=')
+    if parts.len >= 2:
+      ok(parts[1].strip())
+    else:
+      err(btrfsError("Invalid property format for " & property))

@@ -14,6 +14,8 @@
 import std/[os]
 import ../wrappers/log
 import ../types
+import ../errors
+import shutdown
 
 const MaxRetryDelay = 300  # 5 minutes max
 
@@ -25,6 +27,13 @@ proc retryImpl[T](
   description: string
 ): YabbResult[T] =
   ## Internal tail-recursive implementation of retry
+  ## Checks for shutdown before each attempt and after sleep
+
+  # Check for shutdown before attempting operation
+  if isShutdownRequested():
+    debug "Shutdown requested, aborting retry", description = description
+    return err(shutdownError("Operation cancelled by signal"))
+
   let res = operation()
   if res.isOk:
     if attempt > 1:
@@ -42,6 +51,12 @@ proc retryImpl[T](
     delay = delay, description = description
 
   sleep(delay * 1000)
+
+  # Check for shutdown after sleep to avoid unnecessary retry
+  if isShutdownRequested():
+    debug "Shutdown requested during retry delay", description = description
+    return err(shutdownError("Operation cancelled by signal during retry"))
+
   let nextDelay = min(delay * 2, MaxRetryDelay)
   retryImpl(attempt + 1, nextDelay, maxAttempts, operation, description)
 

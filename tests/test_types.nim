@@ -121,17 +121,6 @@ suite "Percentage range type":
     check config.balanceThreshold == 75
     check config.defragThreshold == 50
 
-suite "Distinct types":
-  test "SnapshotPath distinct from string":
-    let path = SnapshotPath("/snapshots/backup.2024-01-01")
-    check $path == "/snapshots/backup.2024-01-01"
-    check path.len == 28
-
-  test "Uuid distinct from string":
-    let uuid = Uuid("550e8400-e29b-41d4-a716-446655440000")
-    check $uuid == "550e8400-e29b-41d4-a716-446655440000"
-    check uuid.len == 36
-
 suite "Snapshot type":
   test "snapshot can be created with optional parent":
     let snap = Snapshot(

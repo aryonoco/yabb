@@ -31,11 +31,12 @@ type
     hostname*: Opt[string]
     kernel*: Opt[string]
     fsUuid*: Opt[string]
+    fsLabel*: Opt[string]
+    platform*: Opt[string]
+    destination*: Opt[string]
     sizeBytes*: int64
 
 const
-  # Clean namespace for Nim rewrite (user.yabb.*)
-  # NOTE: Not compatible with bash script's user.snapshot.* properties
   PropPrefix* = "user.yabb."
 
   # Required properties (for verification + chain logic)
@@ -52,6 +53,9 @@ const
   PropHostname* = PropPrefix & "hostname"
   PropKernel* = PropPrefix & "kernel"
   PropFsUuid* = PropPrefix & "fs.uuid"
+  PropFsLabel* = PropPrefix & "fs.label"
+  PropPlatform* = PropPrefix & "platform"
+  PropDestination* = PropPrefix & "destination"
   PropSizeBytes* = PropPrefix & "size"
   PropVerified* = PropPrefix & "verified"
 
@@ -96,6 +100,12 @@ proc setSnapshotMetadata*(path: string, meta: SnapshotMetadata, dryRun: bool = f
     discard setProperty(path, PropKernel, meta.kernel.get, dryRun)
   if meta.fsUuid.isSome:
     discard setProperty(path, PropFsUuid, meta.fsUuid.get, dryRun)
+  if meta.fsLabel.isSome:
+    discard setProperty(path, PropFsLabel, meta.fsLabel.get, dryRun)
+  if meta.platform.isSome:
+    discard setProperty(path, PropPlatform, meta.platform.get, dryRun)
+  if meta.destination.isSome:
+    discard setProperty(path, PropDestination, meta.destination.get, dryRun)
   if meta.sizeBytes > 0:
     discard setProperty(path, PropSizeBytes, $meta.sizeBytes, dryRun)
 
@@ -154,6 +164,24 @@ proc getSnapshotMetadata*(path: string): YabbResult[SnapshotMetadata] =
   else:
     Opt.none(string)
 
+  let fsLabelRes = getProperty(path, PropFsLabel)
+  let fsLabel = if fsLabelRes.isOk and fsLabelRes.value.len > 0:
+    Opt.some(fsLabelRes.value)
+  else:
+    Opt.none(string)
+
+  let platformRes = getProperty(path, PropPlatform)
+  let platform = if platformRes.isOk and platformRes.value.len > 0:
+    Opt.some(platformRes.value)
+  else:
+    Opt.none(string)
+
+  let destinationRes = getProperty(path, PropDestination)
+  let destination = if destinationRes.isOk and destinationRes.value.len > 0:
+    Opt.some(destinationRes.value)
+  else:
+    Opt.none(string)
+
   let chainPosStr = getProperty(path, PropChainPosition).valueOr: "0"
   let chainPos = try: parseInt(chainPosStr) except ValueError: 0
 
@@ -175,6 +203,9 @@ proc getSnapshotMetadata*(path: string): YabbResult[SnapshotMetadata] =
     hostname: hostname,
     kernel: kernel,
     fsUuid: fsUuid,
+    fsLabel: fsLabel,
+    platform: platform,
+    destination: destination,
     sizeBytes: sizeBytes
   ))
 

@@ -8,6 +8,8 @@ _yabb() {
         'run:Run BTRFS backup with optional incremental detection'
         'validate:Validate configuration without running backup'
         'status:Show current snapshot status and disk usage'
+        'optimize:Manually run storage optimization operations'
+        'health:Check snapshot chain health and optionally repair issues'
         'help:Show help for a command'
     )
 
@@ -39,6 +41,23 @@ _yabb() {
                 status)
                     _arguments \
                         '(-c --configPath)'{-c,--configPath}'[Path to TOML configuration file]:file:_files' \
+                        '(-j --json)'{-j,--json}'[Output in JSON format]' \
+                        '(-h --help)'{-h,--help}'[Show help]'
+                    ;;
+                optimize)
+                    _arguments \
+                        '(-c --configPath)'{-c,--configPath}'[Path to TOML configuration file]:file:_files' \
+                        '(-n --dryRun)'{-n,--dryRun}'[Show what would be done without changes]' \
+                        '--defrag[Run defragmentation (default: true)]' \
+                        '--balance[Run balance operation (default: true)]' \
+                        '--scrub[Run scrub operation (default: false)]' \
+                        '(-j --json)'{-j,--json}'[Output in JSON format]' \
+                        '(-h --help)'{-h,--help}'[Show help]'
+                    ;;
+                health)
+                    _arguments \
+                        '(-c --configPath)'{-c,--configPath}'[Path to TOML configuration file]:file:_files' \
+                        '(-r --repair)'{-r,--repair}'[Attempt to repair chain issues]' \
                         '(-j --json)'{-j,--json}'[Output in JSON format]' \
                         '(-h --help)'{-h,--help}'[Show help]'
                     ;;

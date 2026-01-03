@@ -9,7 +9,7 @@
 ## Snapshot creation, verification, and management
 ## Main module for BTRFS snapshot workflow
 
-import std/[times, os, strutils, posix, sequtils, options]
+import std/[times, os, strutils, posix, sequtils, options, algorithm]
 import uuids
 import ../wrappers/log
 import ../types
@@ -80,14 +80,30 @@ proc getLastSnapshot*(): Opt[string] =
   Opt.none(string)
 
 proc saveLastSnapshot*(path: string, dryRun: bool): YabbResult[void] =
-  ## Save snapshot path to tracking file
+  ## Save snapshot path to tracking file (atomic write)
+  ## Uses write-to-temp + rename pattern for crash safety
   if dryRun:
     debug "DRY_RUN: Would update last snapshot reference", path = path
     return ok()
+
+  let tempPath = LastSnapshotFile & ".tmp"
   try:
-    writeFile(LastSnapshotFile, path & "\n")
+    # Write to temp file first
+    writeFile(tempPath, path & "\n")
+    # Atomic rename (POSIX guarantees atomicity for rename on same filesystem)
+    # Note: moveFile only raises OSError in practice, but std/os annotation is incomplete
+    {.cast(raises: [OSError]).}:
+      moveFile(tempPath, LastSnapshotFile)
     ok()
+  except OSError as e:
+    # Clean up temp file on failure
+    try: removeFile(tempPath)
+    except OSError: discard
+    err(btrfsError("Failed to update last snapshot file: " & e.msg))
   except IOError as e:
+    # Clean up temp file on failure (writeFile can raise IOError)
+    try: removeFile(tempPath)
+    except OSError: discard
     err(btrfsError("Failed to update last snapshot file: " & e.msg))
 
 proc detectChanges*(
@@ -119,7 +135,7 @@ proc detectChanges*(
     config.retryCount,
     config.retryDelay,
     proc(): YabbResult[int64] {.raises: [].} =
-      runBtrfsSend(@["--quiet", "-p", parentSnapshot, currentSnapshot], tempGuard.path)
+      runBtrfsSendToFile(@["--quiet", "-p", parentSnapshot, currentSnapshot], tempGuard.path)
     ,
     "Generating incremental send stream for change detection"
   )
@@ -230,6 +246,23 @@ proc getHostname(): string =
   except IOError:
     "unknown"
 
+proc getPlatform(): string =
+  ## Get system platform (architecture)
+  let res = runCommand("uname", ["-m"])
+  if res.isOk and res.value.output.strip.len > 0:
+    res.value.output.strip()
+  else:
+    "unknown"
+
+proc getFilesystemLabel(path: string): Opt[string] =
+  ## Get BTRFS filesystem label for path
+  let res = runCommand("btrfs", ["filesystem", "label", path])
+  if res.isOk and res.value.exitCode == 0:
+    let label = res.value.output.strip()
+    if label.len > 0: Opt.some(label) else: Opt.none(string)
+  else:
+    Opt.none(string)
+
 type
   SnapshotDecision = object
     ## Immutable snapshot planning result
@@ -237,6 +270,9 @@ type
     doFullSnapshot: bool
     tempCompareSnapshot: string  # Path to temp snapshot for cleanup (empty if none)
     noChangesDetected: bool
+
+# Forward declaration - defined after listSnapshots
+proc findLatestValidSnapshot*(snapshotDir: string): YabbResult[Opt[string]]
 
 proc determineSnapshotDecision(
   config: YabbConfig,
@@ -255,8 +291,18 @@ proc determineSnapshotDecision(
       noChangesDetected: false
     )
 
-  let lastSnapshot = getLastSnapshot()
-  if lastSnapshot.isNone:
+  # Try to find parent snapshot - first from tracking file, then by scanning directory
+  var parentCandidate = getLastSnapshot()
+
+  # Fallback: If tracking file is missing/invalid, scan directory for valid snapshot
+  if parentCandidate.isNone:
+    debug "Last snapshot tracking file invalid, scanning directory for valid snapshots"
+    let scanRes = findLatestValidSnapshot(snapshotDir)
+    if scanRes.isOk and scanRes.value.isSome:
+      info "Found valid snapshot by directory scan", path = scanRes.value.get
+      parentCandidate = scanRes.value
+
+  if parentCandidate.isNone:
     return SnapshotDecision(
       parentSnapshot: Opt.none(string),
       doFullSnapshot: true,
@@ -264,16 +310,40 @@ proc determineSnapshotDecision(
       noChangesDetected: false
     )
 
-  # Verify last snapshot is valid
-  let verifyRes = verifySnapshot(lastSnapshot.get, config)
+  # Verify candidate snapshot is valid
+  let verifyRes = verifySnapshot(parentCandidate.get, config)
   if verifyRes.isErr:
-    warn "Last snapshot verification failed, proceeding with full snapshot"
-    return SnapshotDecision(
-      parentSnapshot: Opt.none(string),
-      doFullSnapshot: true,
-      tempCompareSnapshot: "",
-      noChangesDetected: false
-    )
+    warn "Snapshot verification failed, trying directory scan fallback",
+      path = parentCandidate.get
+
+    # Fallback: Try to find another valid snapshot by scanning
+    let scanRes = findLatestValidSnapshot(snapshotDir)
+    if scanRes.isOk and scanRes.value.isSome and scanRes.value.get != parentCandidate.get:
+      # Found a different snapshot - verify it
+      let altVerifyRes = verifySnapshot(scanRes.value.get, config)
+      if altVerifyRes.isOk:
+        info "Using alternative valid snapshot from directory scan",
+          path = scanRes.value.get
+        parentCandidate = scanRes.value
+      else:
+        warn "No valid parent snapshot found, proceeding with full snapshot"
+        return SnapshotDecision(
+          parentSnapshot: Opt.none(string),
+          doFullSnapshot: true,
+          tempCompareSnapshot: "",
+          noChangesDetected: false
+        )
+    else:
+      warn "No alternative valid snapshot found, proceeding with full snapshot"
+      return SnapshotDecision(
+        parentSnapshot: Opt.none(string),
+        doFullSnapshot: true,
+        tempCompareSnapshot: "",
+        noChangesDetected: false
+      )
+
+  # At this point, parentCandidate is verified and valid
+  let lastSnapshot = parentCandidate
 
   # Create temporary readonly snapshot for comparison
   let tempPath = snapshotDir / (TempComparePrefix & "." & $getpid())
@@ -352,19 +422,19 @@ proc createBackupSnapshot*(
   let parentSnapshot = decision.parentSnapshot
   let doFullSnapshot = decision.doFullSnapshot
 
-  # Create readonly snapshot
+  # Create writable snapshot first (need to set xattrs before making readonly)
   let createRes = retry(
     config.retryCount,
     config.retryDelay,
     proc(): YabbResult[void] {.raises: [].} =
-      operations.createSnapshot(srcDir, snapshotPath, readonly = true, dryRun = config.dryRun)
+      operations.createSnapshot(srcDir, snapshotPath, readonly = false, dryRun = config.dryRun)
     ,
     "Creating snapshot"
   )
   if createRes.isErr:
     return err(createRes.error)
 
-  # Set metadata properties
+  # Set metadata properties (must be done BEFORE making readonly)
   let uuid = try: $genUUID()
              except OSError, IOError: "unknown-" & $now().utc.toTime.toUnix
   let snapshotType = if doFullSnapshot: stFull else: stIncremental
@@ -388,7 +458,12 @@ proc createBackupSnapshot*(
     else:
       Opt.none(string)
 
-    discard setSnapshotMetadata(snapshotPath, SnapshotMetadata(
+    # Get additional metadata
+    let fsLabel = getFilesystemLabel(srcDir)
+    let platform = Opt.some(getPlatform())
+
+    # Set metadata - fail if this fails
+    setSnapshotMetadata(snapshotPath, SnapshotMetadata(
       uuid: uuid,
       timestamp: timestamp,
       snapshotType: snapshotType,
@@ -400,64 +475,54 @@ proc createBackupSnapshot*(
       hostname: Opt.some(getHostname()),
       kernel: kernel,
       fsUuid: fsUuid,
+      fsLabel: fsLabel,
+      platform: platform,
+      destination: Opt.some($config.dstDir),
       sizeBytes: 0
-    ), config.dryRun)
+    ), config.dryRun).isOkOr:
+      return err(error)
 
-  # Send snapshot to destination using temp file - RAII guard handles cleanup
-  let sendTempGuard = createTempFileGuard(TempSendPrefix, ".bin").valueOr:
-    return err(error)
+    # Now make snapshot read-only for sending
+    operations.setReadonly(snapshotPath, true, config.dryRun).isOkOr:
+      return err(error)
 
   # Build send args - immutable conditional expression
   let isIncremental = parentSnapshot.isSome and not doFullSnapshot
+  let compressArgs = if config.compress: @["--compressed-data"] else: @[]
   let sendArgs = if isIncremental:
-    @["--compressed-data", "-c", parentSnapshot.get, "-p", parentSnapshot.get, snapshotPath]
+    compressArgs & @["-c", parentSnapshot.get, "-p", parentSnapshot.get, snapshotPath]
   else:
-    @["--compressed-data", snapshotPath]
+    compressArgs & @[snapshotPath]
 
   if isIncremental:
     info "Performing incremental snapshot send from parent"
   else:
     info "Performing full snapshot send"
 
-  # Step 1: btrfs send > temp file
-  let sendRes = retry(
+  # Stream btrfs send | pv | btrfs receive (no temp files)
+  let streamRes = retry(
     config.retryCount,
     config.retryDelay,
-    proc(): YabbResult[int64] {.raises: [].} = runBtrfsSend(sendArgs, sendTempGuard.path, config.dryRun),
-    "Sending snapshot"
+    proc(): YabbResult[void] {.raises: [].} =
+      runBtrfsSendReceive(sendArgs, $config.dstDir, config.dryRun),
+    "Streaming snapshot to destination"
   )
-  if sendRes.isErr:
+  if streamRes.isErr:
     # Fallback to full send if incremental fails
     if parentSnapshot.isSome and not doFullSnapshot:
       warn "Incremental send failed, falling back to full send"
-      let fullSendRes = retry(
+      let fullSendArgs = compressArgs & @[snapshotPath]
+      let fullStreamRes = retry(
         config.retryCount,
         config.retryDelay,
-        proc(): YabbResult[int64] {.raises: [].} = runBtrfsSend(
-          @["--compressed-data", snapshotPath],
-          sendTempGuard.path,
-          config.dryRun
-        ),
-        "Sending full snapshot (fallback)"
+        proc(): YabbResult[void] {.raises: [].} =
+          runBtrfsSendReceive(fullSendArgs, $config.dstDir, config.dryRun),
+        "Streaming full snapshot (fallback)"
       )
-      if fullSendRes.isErr:
-        return err(fullSendRes.error)
+      if fullStreamRes.isErr:
+        return err(fullStreamRes.error)
     else:
-      return err(sendRes.error)
-
-  # Step 2: btrfs receive -f temp file destdir
-  let recvRes = retry(
-    config.retryCount,
-    config.retryDelay,
-    proc(): YabbResult[void] {.raises: [].} = runBtrfsReceive(
-      @["--max-errors", "10", "-v", config.dstDir],
-      sendTempGuard.path,
-      config.dryRun
-    ),
-    "Receiving snapshot"
-  )
-  if recvRes.isErr:
-    return err(recvRes.error)
+      return err(streamRes.error)
 
   # Update chain length on all snapshots in the chain
   if not config.dryRun:
@@ -520,5 +585,27 @@ proc listSnapshots*(snapshotDir: string): YabbResult[seq[Snapshot]] =
     .mapIt(it.get)
 
   ok(snapshots)
+
+proc findLatestValidSnapshot*(snapshotDir: string): YabbResult[Opt[string]] =
+  ## Find the most recent valid snapshot for incremental backup
+  ## Scans the snapshot directory for snapshots with valid metadata
+  let snapshots = listSnapshots(snapshotDir).valueOr:
+    return err(error)
+
+  if snapshots.len == 0:
+    return ok(Opt.none(string))
+
+  # Sort by timestamp descending (newest first) - immutable sorted copy
+  let sorted = snapshots.sorted(proc(a, b: Snapshot): int {.raises: [].} = cmp(b.timestamp, a.timestamp))
+
+  # Find first snapshot with valid metadata
+  let found = sorted.findFirst(block:
+    let hasMeta = hasRequiredProperties(it.path)
+    hasMeta.isOk and hasMeta.value
+  )
+  if found.isSome:
+    ok(Opt.some(found.get.path))
+  else:
+    ok(Opt.none(string))
 
 {.pop.}

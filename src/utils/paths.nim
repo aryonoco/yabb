@@ -11,11 +11,19 @@
 
 {.push raises: [].}
 
-import std/[os, strutils]
+import std/[os, strutils, sequtils, posix]
 import ../types
 import ../errors
 
 const MaxPathLength* = 4096
+
+# Dangerous patterns that should not appear in resolved paths
+const DangerousPatterns = ["/../", "/./", "//"]
+
+func containsDangerousPattern*(path: string): bool =
+  ## Pure function: check for traversal patterns in resolved path
+  ## These patterns should not appear after path resolution
+  DangerousPatterns.anyIt(it in path)
 
 proc sanitizePath*(path: string): YabbResult[string] =
   ## Sanitize and normalize a path
@@ -46,6 +54,11 @@ proc sanitizePath*(path: string): YabbResult[string] =
     expandFilename(absolutePath)
   except OSError as e:
     return err(yabbErr(ecInvalidVar, "PATH", "Failed to resolve path: " & e.msg))
+
+  # Post-resolution security check for dangerous patterns
+  if containsDangerousPattern(resolved):
+    return err(yabbErr(ecInvalidVar, "PATH",
+      "Path contains dangerous patterns after resolution: " & resolved))
 
   # Check path length
   if resolved.len > MaxPathLength:
@@ -90,10 +103,17 @@ proc joinPaths*(base, sub: string): YabbResult[string] =
   sanitizePath(cleanBase / cleanSub)
 
 proc isSubPath*(child, parent: string): bool =
-  ## Check if child is a subpath of parent
+  ## Check if child is a subpath of parent (path-component aware)
+  ## Correctly handles edge cases like /var/logfiles not being under /var/log
   let childNorm = try: expandFilename(child) except: return false
   let parentNorm = try: expandFilename(parent) except: return false
-  childNorm.startsWith(parentNorm & "/") or childNorm == parentNorm
+
+  if childNorm == parentNorm:
+    return true
+
+  # Ensure we match path components, not just string prefix
+  let parentWithSep = if parentNorm.endsWith("/"): parentNorm else: parentNorm & "/"
+  childNorm.startsWith(parentWithSep)
 
 proc ensureDir*(path: string, dryRun: bool = false): YabbResult[void] =
   ## Ensure directory exists, creating if necessary
@@ -110,5 +130,24 @@ proc ensureDir*(path: string, dryRun: bool = false): YabbResult[void] =
     err(dirError("Failed to create directory " & path & ": " & e.msg))
   except IOError as e:
     err(dirError("IO error creating directory " & path & ": " & e.msg))
+
+type
+  PathPermission* = enum
+    ppRead, ppWrite, ppExecute
+  PathPermissions* = set[PathPermission]
+
+proc checkPathPermissions*(path: string, required: PathPermissions): YabbResult[void] =
+  ## Verify path has required permissions using POSIX access()
+  ## Uses the real user ID (not effective), matching shell behavior
+  if ppRead in required:
+    if access(path.cstring, R_OK) != 0:
+      return err(yabbErr(ecDirInvalid, "PATH", "No read permission: " & path))
+  if ppWrite in required:
+    if access(path.cstring, W_OK) != 0:
+      return err(yabbErr(ecDirInvalid, "PATH", "No write permission: " & path))
+  if ppExecute in required:
+    if access(path.cstring, X_OK) != 0:
+      return err(yabbErr(ecDirInvalid, "PATH", "No execute permission: " & path))
+  ok()
 
 {.pop.}

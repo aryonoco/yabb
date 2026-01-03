@@ -11,6 +11,7 @@
 
 {.push raises: [].}
 
+import std/[times, strutils]
 import wrappers/log
 import types
 
@@ -46,13 +47,46 @@ func lockHeldError*(msg: string): YabbError =
 func lockError*(msg: string): YabbError =
   yabbErr(ecLockError, "LOCK", msg)
 
+func shutdownError*(msg: string): YabbError =
+  yabbErr(ecShutdown, "SHUTDOWN", msg)
+
 # Summary reporting (matches bash script behavior)
 proc logSummary*(scriptStatus: int, stats: ExecutionStats) =
-  ## Log execution summary with immutable stats
-  if scriptStatus != 0 or stats.errors > 0:
-    error "Script completed with errors",
-      status = scriptStatus, errors = stats.errors, warnings = stats.warnings
+  ## Log comprehensive execution summary with immutable stats
+  ## Includes runtime, snapshots created/deleted, operations, and status
+  # Calculate runtime if start time was set
+  let runtime = if stats.startTime > 0.0:
+    let elapsed = epochTime() - stats.startTime
+    let mins = int(elapsed) div 60
+    let secs = int(elapsed) mod 60
+    if mins > 0: $mins & "m " & $secs & "s"
+    else: $secs & "s"
   else:
-    info "Script completed successfully", warnings = stats.warnings
+    "unknown"
+
+  # Log summary line with all details
+  if scriptStatus != 0 or stats.errors > 0:
+    error "Backup completed with errors",
+      status = scriptStatus,
+      runtime = runtime,
+      snapshotsCreated = stats.snapshotsCreated,
+      snapshotsDeleted = stats.snapshotsDeleted,
+      errors = stats.errors,
+      warnings = stats.warnings
+  elif stats.warnings > 0:
+    warn "Backup completed with warnings",
+      runtime = runtime,
+      snapshotsCreated = stats.snapshotsCreated,
+      snapshotsDeleted = stats.snapshotsDeleted,
+      warnings = stats.warnings
+  else:
+    info "Backup completed successfully",
+      runtime = runtime,
+      snapshotsCreated = stats.snapshotsCreated,
+      snapshotsDeleted = stats.snapshotsDeleted
+
+  # Log operations performed if any
+  if stats.operations.len > 0:
+    info "Operations performed", operations = stats.operations.join(", ")
 
 {.pop.}

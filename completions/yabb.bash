@@ -8,7 +8,7 @@ _yabb() {
     prev="${COMP_WORDS[COMP_CWORD-1]}"
 
     # Subcommands
-    subcommands="run validate status help"
+    subcommands="run validate status optimize health help"
 
     # Complete subcommand at position 1
     if [[ ${COMP_CWORD} -eq 1 ]]; then
@@ -29,6 +29,12 @@ _yabb() {
             ;;
         status)
             opts="--configPath -c --json -j --help -h"
+            ;;
+        optimize)
+            opts="--configPath -c --dryRun -n --defrag --balance --scrub --json -j --help -h"
+            ;;
+        health)
+            opts="--configPath -c --repair -r --json -j --help -h"
             ;;
         help)
             COMPREPLY=( $(compgen -W "${subcommands}" -- ${cur}) )

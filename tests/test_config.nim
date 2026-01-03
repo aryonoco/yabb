@@ -23,6 +23,17 @@ suite "Configuration loading":
     check result.error.code == ecConfigMissing
 
   test "valid config loads correctly":
+    # Create temporary directories for the test
+    let testDir = getTempDir() / "yabb_test_config"
+    let srcDir = testDir / "src"
+    let dstDir = testDir / "dst"
+    let snapDir = testDir / "snap"
+    createDir(srcDir)
+    createDir(dstDir)
+    createDir(snapDir)
+    defer:
+      removeDir(testDir)
+
     # Create a temporary config file
     let (file, path) = createTempFile("yabb_test_", ".toml")
     defer:
@@ -31,9 +42,9 @@ suite "Configuration loading":
 
     file.write("""
 [paths]
-src_dir = "/data"
-dst_dir = "/backup"
-snapshot_dir = "/snapshots"
+src_dir = """" & srcDir & """"
+dst_dir = """" & dstDir & """"
+snapshot_dir = """" & snapDir & """"
 
 [compression]
 algorithm = "zstd"
@@ -57,9 +68,9 @@ retry_delay = 5
     check result.isOk
 
     let cfg = result.value
-    check cfg.srcDir == "/data"
-    check cfg.dstDir == "/backup"
-    check cfg.snapshotDir == "/snapshots"
+    check cfg.srcDir == srcDir
+    check cfg.dstDir == dstDir
+    check cfg.snapshotDir == snapDir
     check cfg.compression.algo == caZstd
     check cfg.compression.level == 3
     check cfg.retention.hourly == 24
@@ -72,6 +83,17 @@ retry_delay = 5
     check cfg.retryDelay == 5
 
   test "config with defaults":
+    # Create temporary directories for the test
+    let testDir = getTempDir() / "yabb_test_defaults"
+    let srcDir = testDir / "src"
+    let dstDir = testDir / "dst"
+    let snapDir = testDir / "snap"
+    createDir(srcDir)
+    createDir(dstDir)
+    createDir(snapDir)
+    defer:
+      removeDir(testDir)
+
     let (file, path) = createTempFile("yabb_test_", ".toml")
     defer:
       file.close()
@@ -80,9 +102,9 @@ retry_delay = 5
     # Minimal config - only required paths
     file.write("""
 [paths]
-src_dir = "/data"
-dst_dir = "/backup"
-snapshot_dir = "/snapshots"
+src_dir = """" & srcDir & """"
+dst_dir = """" & dstDir & """"
+snapshot_dir = """" & snapDir & """"
 """)
     file.flushFile()
 

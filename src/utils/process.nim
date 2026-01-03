@@ -11,10 +11,14 @@
 
 {.push raises: [].}
 
-import std/[osproc, streams, os, sequtils]
+import std/[osproc, streams, os, sequtils, strutils]
 import ../wrappers/log
 import ../types
 import ../errors
+
+const
+  DefaultTimeout* = 120_000        ## 2 minutes - general commands
+  LongOperationTimeout* = 600_000_000  ## About a week- btrfs send/receive, scrub, balance
 
 type
   CommandResult* = object
@@ -25,7 +29,7 @@ proc runCommand*(
   cmd: string,
   args: openArray[string] = [],
   workingDir: string = "",
-  timeout: int = 120_000,  # ms
+  timeout: int = DefaultTimeout,
   dryRun: bool = false
 ): YabbResult[CommandResult] =
   ## Execute external command with timeout
@@ -66,14 +70,14 @@ proc runBtrfs*(args: openArray[string], dryRun: bool = false): YabbResult[Comman
   ## Convenience wrapper for btrfs commands
   runCommand("btrfs", args, dryRun = dryRun)
 
-proc runBtrfsSend*(
+proc runBtrfsSendToFile*(
   args: openArray[string],
   tempFile: string,
   dryRun: bool = false
 ): YabbResult[int64] =
   ## Run btrfs send with -f flag for direct file output
-  ## Uses `btrfs send -f tempFile ...` instead of piping through Nim
-  ## This is more robust for large streams and avoids buffer issues
+  ## Used for change detection (small metadata diffs) - NOT for main backups
+  ## For main backups, use runBtrfsSendReceive() for streaming
   if dryRun:
     debug "DRY_RUN: Would run btrfs send", args = $args
     return ok(0i64)
@@ -84,7 +88,7 @@ proc runBtrfsSend*(
 
   debug "Running btrfs send", args = $sendArgs
 
-  let sendRes = runCommand("btrfs", sendArgs)
+  let sendRes = runCommand("btrfs", sendArgs, timeout = LongOperationTimeout)
   if sendRes.isErr:
     return err(sendRes.error)
   if sendRes.value.exitCode != 0:
@@ -97,13 +101,13 @@ proc runBtrfsSend*(
   except OSError as e:
     err(btrfsError("Failed to get send stream size: " & e.msg))
 
-proc runBtrfsReceive*(
+proc runBtrfsReceiveFromFile*(
   args: openArray[string],
   tempFile: string,
   dryRun: bool = false
 ): YabbResult[void] =
-  ## Run btrfs receive -f tempfile (direct file read, no piping through Nim)
-  ## Uses `btrfs receive -f <tempfile> <destpath>` for robustness with large streams
+  ## Run btrfs receive -f tempfile (direct file read)
+  ## Used internally - for main backups, use runBtrfsSendReceive() for streaming
   ## IMPORTANT: args MUST include the destination mount path (e.g., config.dstDir)
   if dryRun:
     debug "DRY_RUN: Would run btrfs receive", args = $args
@@ -115,13 +119,60 @@ proc runBtrfsReceive*(
 
   debug "Running btrfs receive", args = $recvArgs
 
-  let recvRes = runCommand("btrfs", recvArgs)
+  let recvRes = runCommand("btrfs", recvArgs, timeout = LongOperationTimeout)
   if recvRes.isErr:
     return err(recvRes.error)
   if recvRes.value.exitCode != 0:
     return err(btrfsError("btrfs receive failed with exit code " & $recvRes.value.exitCode))
 
   ok()
+
+proc quoteShellArg(s: string): string =
+  ## Quote a string for safe use in shell commands
+  ## Wraps in single quotes and escapes any single quotes within
+  if s.len == 0:
+    return "''"
+  result = "'"
+  for c in s:
+    if c == '\'':
+      result.add("'\"'\"'")  # End quote, add escaped quote, start new quote
+    else:
+      result.add(c)
+  result.add("'")
+
+proc runBtrfsSendReceive*(
+  sendArgs: openArray[string],
+  destDir: string,
+  dryRun: bool = false
+): YabbResult[void] =
+  ## Stream btrfs send directly to btrfs receive via pipe with progress
+  ## Uses: btrfs send [args] | pv -pterb | btrfs receive [destDir]
+  ##
+  ## This is the PRIMARY method for backups - no temp files, true streaming.
+  ## Progress is displayed via pv (pipe viewer).
+  if dryRun:
+    debug "DRY_RUN: Would stream btrfs send | pv | btrfs receive",
+      sendArgs = $sendArgs, destDir = destDir
+    return ok()
+
+  # Build shell command with proper escaping
+  let sendCmd = "btrfs send " & sendArgs.mapIt(quoteShellArg(it)).join(" ")
+  let recvCmd = "btrfs receive " & quoteShellArg(destDir)
+
+  # Use pv for progress: -p progress bar, -t timer, -e ETA, -r rate, -b bytes
+  let fullCmd = sendCmd & " | pv -pterb | " & recvCmd
+
+  info "Starting streaming backup", dest = destDir
+  debug "Running shell command", cmd = fullCmd
+
+  # Execute via shell for pipe support
+  try:
+    let exitCode = execShellCmd(fullCmd)
+    if exitCode != 0:
+      return err(btrfsError("btrfs send|receive failed with exit code " & $exitCode))
+    ok()
+  except OSError as e:
+    err(btrfsError("Failed to execute streaming backup: " & e.msg))
 
 proc validateSendStream*(tempFile: string): YabbResult[void] =
   ## Validate send stream using btrfs receive --dump

@@ -20,6 +20,9 @@ import functional
 
 const RequiredCommands* = [
   ("btrfs", "For btrfs operations"),
+  ("pv", "For transfer progress display"),
+  ("setfattr", "For setting extended attributes"),
+  ("getfattr", "For reading extended attributes"),
   ("date", "For timestamp operations"),
   ("find", "For finding snapshots"),
   ("grep", "For text processing"),
@@ -43,21 +46,26 @@ proc checkCommand*(cmd: string): bool =
   let res = runCommand("which", [cmd])
   res.isOk and res.value.exitCode == 0
 
-proc checkKernelCompression*(algo: string): YabbResult[void] =
-  ## Verify kernel supports compression algorithm via /proc/crypto
-  try:
-    let crypto = readFile("/proc/crypto")
-    if algo.toLowerAscii notin crypto.toLowerAscii:
-      return err(prereqError("Kernel does not support " & algo & " compression"))
-    ok()
-  except IOError:
-    err(prereqError("Cannot read /proc/crypto"))
-
 proc checkBtrfsFeatures*(): YabbResult[void] =
   ## Verify btrfs-progs is working
   let res = runBtrfs(["version"])
   if res.isErr or res.value.exitCode != 0:
     return err(prereqError("btrfs-progs not working properly"))
+  ok()
+
+proc checkBtrfsSendReceive*(): YabbResult[void] =
+  ## Verify btrfs send/receive functionality by checking btrfs-progs
+  ## supports required features (--compressed-data flag)
+  let res = runCommand("btrfs", ["send", "--help"])
+  if res.isErr or res.value.exitCode != 0:
+    return err(prereqError("btrfs send command not functional"))
+
+  # Verify --compressed-data flag is supported (btrfs-progs >= 5.14)
+  if not res.value.output.contains("compressed-data"):
+    return err(prereqError(
+      "btrfs-progs version doesn't support --compressed-data (requires >= 5.14)"))
+
+  debug "btrfs send/receive verified", compressedData = true
   ok()
 
 proc checkDirectoryWritable*(dir: string, dryRun: bool = false): YabbResult[void] =
@@ -98,16 +106,16 @@ proc checkPrerequisites*(config: YabbConfig): YabbResult[void] =
   ).isOkOr:
     return err(error)
 
-  # 4. Check kernel compression support
-  checkKernelCompression($config.compression.algo).isOkOr:
+  # 3b. Check btrfs send/receive functionality
+  checkBtrfsSendReceive().isOkOr:
     return err(error)
 
-  # 5. Check for BTRFS device errors (pre-flight safety check)
+  # 4. Check for BTRFS device errors (pre-flight safety check)
   if not config.dryRun:
-    let srcErrors = hasErrors(config.srcDir)
+    let srcErrors = hasErrors($config.srcDir)
     if srcErrors.isOk and srcErrors.value:
       return err(yabbErr(ecDeviceErrors, "PREREQ",
-        "BTRFS device has errors on source directory. Run 'btrfs scrub' first: " & config.srcDir))
+        "BTRFS device has errors on source directory. Run 'btrfs scrub' first: " & $config.srcDir))
 
   # 6. Check directory write permissions - use helper to avoid closure capture issues
   if not config.dryRun:

@@ -44,10 +44,4 @@ proc createTempFileGuard*(prefix, suffix: string): YabbResult[TempFileGuard] =
   except OSError as e:
     err(btrfsError("Failed to create temp file: " & e.msg))
 
-proc invalidate*(g: sink TempFileGuard) =
-  ## Consume the guard without deleting the file
-  ## Use this if you've moved/renamed the temp file elsewhere
-  ## The guard is consumed via sink semantics - no mutation needed
-  discard
-
 {.pop.}

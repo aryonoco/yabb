@@ -9,7 +9,7 @@
 ## Storage operations for BTRFS
 ## Handles space checks, compression verification, defrag, balance, scrub
 
-import std/[strutils, sequtils]
+import std/[os, strutils, sequtils]
 import ../wrappers/log
 import ../types
 import ../errors
@@ -26,21 +26,21 @@ type
 
 proc verifyCompression*(path: string, compression: CompressionLevel): YabbResult[void] =
   ## Verify filesystem supports the requested compression algorithm
-  ## Checks both kernel support (/proc/crypto) and btrfs mount options
+  ## Checks btrfs sysfs features and kernel crypto support
 
-  # Check kernel crypto support
-  try:
-    let crypto = readFile("/proc/crypto")
-    let algoName = $compression.algo
-    if algoName.toLowerAscii notin crypto.toLowerAscii:
-      return err(prereqError("Kernel does not support " & algoName & " compression"))
-  except IOError:
-    return err(prereqError("Cannot read /proc/crypto"))
+  let algoName = $compression.algo
+  let algoLower = algoName.toLowerAscii
 
-  # Check btrfs supports compression on this mount
-  let res = runBtrfs(["filesystem", "show", path])
-  if res.isErr or res.value.exitCode != 0:
-    return err(btrfsError("Cannot verify btrfs filesystem at " & path))
+  # Check btrfs sysfs for compression support (btrfs has built-in zstd/lzo)
+  let btrfsFeaturePath = "/sys/fs/btrfs/features/compress_" & algoLower
+  if not fileExists(btrfsFeaturePath):
+    # Fallback: check /proc/crypto for kernel crypto API
+    try:
+      let crypto = readFile("/proc/crypto")
+      if algoLower notin crypto.toLowerAscii:
+        return err(prereqError("Kernel does not support " & algoName & " compression"))
+    except IOError:
+      return err(prereqError("Cannot verify compression support"))
 
   debug "Compression verified", algo = $compression.algo, level = compression.level
   ok()
@@ -85,16 +85,23 @@ proc defragment*(path: string, dryRun: bool = false): YabbResult[void] =
   ok()
 
 proc balance*(path: string, dryRun: bool = false): YabbResult[void] =
-  ## Start a btrfs balance operation
+  ## Run a btrfs balance operation with targeted parameters
+  ## Uses -dusage=5,limit=2 -musage=5,limit=4 to balance only nearly-empty chunks
+  ## This reduces I/O compared to a full balance
   if dryRun:
     debug "DRY_RUN: Would balance", path = path
     return ok()
 
-  let res = runBtrfs(["balance", "start", path])
-  if res.isErr or res.value.exitCode != 0:
-    return err(btrfsError("Failed to start balance on " & path))
+  info "Starting balance (this may take a while)", path = path
+  let res = runCommand("btrfs",
+    ["balance", "start", "-dusage=5,limit=2", "-musage=5,limit=4", path],
+    timeout = LongOperationTimeout)
+  if res.isErr:
+    return err(res.error)
+  if res.value.exitCode != 0:
+    return err(btrfsError("Balance failed on " & path))
 
-  info "Balance started", path = path
+  info "Balance completed", path = path
   ok()
 
 proc balanceStatus*(path: string): YabbResult[string] =
@@ -105,16 +112,21 @@ proc balanceStatus*(path: string): YabbResult[string] =
   ok(res.value.output)
 
 proc scrub*(path: string, dryRun: bool = false): YabbResult[void] =
-  ## Start a btrfs scrub operation
+  ## Run a btrfs scrub operation (blocking mode with -B)
+  ## This waits for scrub to complete rather than returning immediately
   if dryRun:
     debug "DRY_RUN: Would scrub", path = path
     return ok()
 
-  let res = runBtrfs(["scrub", "start", path])
-  if res.isErr or res.value.exitCode != 0:
-    return err(btrfsError("Failed to start scrub on " & path))
+  info "Starting scrub (this may take a while)", path = path
+  let res = runCommand("btrfs", ["scrub", "start", "-B", path],
+                       timeout = LongOperationTimeout)
+  if res.isErr:
+    return err(res.error)
+  if res.value.exitCode != 0:
+    return err(btrfsError("Scrub failed on " & path))
 
-  info "Scrub started", path = path
+  info "Scrub completed", path = path
   ok()
 
 proc scrubStatus*(path: string): YabbResult[string] =
@@ -246,16 +258,20 @@ proc optimizeStorage*(
   # Run defrag if needed (with compression)
   if check.needsDefrag:
     info "Running defragmentation with compression", path = path
-    let defragRes = runBtrfs(["filesystem", "defragment", "-r", "-czstd", path])
+    let defragRes = runCommand("btrfs",
+      ["filesystem", "defragment", "-r", "-czstd", path],
+      timeout = LongOperationTimeout)
     if defragRes.isErr or defragRes.value.exitCode != 0:
       warn "Defragmentation failed", path = path
       # Non-fatal, continue with balance
 
-  # Run balance if needed (with usage filters for efficiency)
+  # Run balance if needed (with targeted usage filters)
+  # Uses -dusage=5,limit=2 -musage=5,limit=4 to balance only nearly-empty chunks
   if check.needsBalance:
     info "Running balance operation", path = path
-    # Use usage filters to only balance chunks that need it
-    let balanceRes = runBtrfs(["balance", "start", "-dusage=50", "-musage=50", path])
+    let balanceRes = runCommand("btrfs",
+      ["balance", "start", "-dusage=5,limit=2", "-musage=5,limit=4", path],
+      timeout = LongOperationTimeout)
     if balanceRes.isErr or balanceRes.value.exitCode != 0:
       warn "Balance failed", path = path
       # Non-fatal

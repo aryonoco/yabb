@@ -23,6 +23,8 @@ type
     ciMissingMetadata = "Missing required metadata"
     ciInvalidChainPos = "Invalid chain position"
     ciBrokenChain = "Broken chain linkage"
+    ciNotReadonly = "Snapshot is not read-only"
+    ciInvalidSubvolume = "Not a valid btrfs subvolume"
 
   ChainDiagnostic* = object
     path*: string
@@ -33,6 +35,27 @@ type
 
 proc diagnoseSnapshot(snap: Snapshot): seq[ChainDiagnostic] =
   ## Diagnose issues for a single snapshot, returning 0 or more diagnostics
+  ## Checks for incomplete snapshots (not subvolume, not readonly) BEFORE metadata
+
+  # Check subvolume validity first (before metadata checks)
+  # Incomplete snapshots may not have metadata, so check structure first
+  let isSubvol = isSubvolume(snap.path)
+  if isSubvol.isErr or not isSubvol.value:
+    return @[ChainDiagnostic(
+      path: snap.path,
+      issue: ciInvalidSubvolume,
+      details: "Path is not a valid btrfs subvolume"
+    )]
+
+  # Check read-only status (interrupted snapshot creation leaves ro=false)
+  let roStatus = isReadonly(snap.path)
+  if roStatus.isErr or not roStatus.value:
+    return @[ChainDiagnostic(
+      path: snap.path,
+      issue: ciNotReadonly,
+      details: "Snapshot is not read-only (incomplete creation)"
+    )]
+
   # Check for required metadata
   let hasMeta = hasRequiredProperties(snap.path)
   if hasMeta.isErr or not hasMeta.value:
@@ -211,5 +234,109 @@ proc rebuildChainFromFull*(
     kept = keptCount, deleted = deletedCount
 
   ok()
+
+proc cleanupIncompleteSnapshots*(
+  snapshotDir: string,
+  config: YabbConfig
+): YabbResult[tuple[cleaned: int, failed: int]] =
+  ## Find and delete incomplete snapshots (not readonly or invalid subvolumes)
+  ## Returns count of cleaned and failed deletions
+  ## Follows bash script's recover_snapshot_chain() behavior for cleanup
+
+  # Get all diagnostics (includes new ciNotReadonly and ciInvalidSubvolume checks)
+  let diagnostics = diagnoseChain(snapshotDir).valueOr:
+    return err(error)
+
+  # Filter to only incomplete snapshot issues using set membership
+  let incompleteIssues = diagnostics.filterIt(
+    it.issue in {ciNotReadonly, ciInvalidSubvolume}
+  )
+
+  if incompleteIssues.len == 0:
+    debug "No incomplete snapshots found", snapshotDir = snapshotDir
+    return ok((cleaned: 0, failed: 0))
+
+  # Use fold pattern for deletion with counters (matching rebuildChainFromFull style)
+  let (cleaned, failed) = incompleteIssues.foldl(
+    block:
+      if config.dryRun:
+        info "DRY_RUN: Would delete incomplete snapshot",
+             path = b.path, issue = $b.issue
+        (a[0] + 1, a[1])
+      else:
+        let delRes = deleteSubvolume(b.path, config.dryRun)
+        if delRes.isOk:
+          info "Deleted incomplete snapshot", path = b.path, issue = $b.issue
+          (a[0] + 1, a[1])
+        else:
+          warn "Failed to delete incomplete snapshot",
+               path = b.path, error = delRes.error.msg
+          (a[0], a[1] + 1)
+    , (0, 0))
+
+  info "Incomplete snapshot cleanup completed", cleaned = cleaned, failed = failed
+  ok((cleaned: cleaned, failed: failed))
+
+proc recoverChain*(
+  snapshotDir: string,
+  config: YabbConfig
+): YabbResult[tuple[incompletesCleaned: int, orphansRemoved: int, metadataRepaired: int]] =
+  ## Full chain recovery: find recovery point, cleanup, and repair metadata
+  ## Enhanced recovery with intelligent anchor point detection
+  ##
+  ## Recovery steps:
+  ## 1. Find the best recovery point (most recent full or valid incremental)
+  ## 2. If a full snapshot exists, rebuild chain from it (remove orphaned incrementals)
+  ## 3. Delete incomplete snapshots (not readonly, invalid subvolumes)
+  ## 4. Repair chain metadata on remaining valid snapshots
+
+  var orphansRemoved = 0
+
+  # Step 1: Find the best recovery point
+  let recoveryPoint = findRecoveryPoint(snapshotDir).valueOr:
+    warn "Failed to find recovery point, proceeding with basic recovery",
+      error = error.msg
+    Opt.none(string)
+
+  # Step 2: If we found a full snapshot, rebuild chain from it
+  if recoveryPoint.isSome:
+    let recoveryPath = recoveryPoint.get
+    let meta = getSnapshotMetadata(recoveryPath)
+    if meta.isOk and meta.value.snapshotType == stFull:
+      info "Found recovery anchor point (full snapshot)", path = recoveryPath
+
+      # Count snapshots before rebuild to calculate orphans removed
+      let beforeSnapshots = listSnapshots(snapshotDir).valueOr:
+        return err(error)
+      let beforeCount = beforeSnapshots.len
+
+      rebuildChainFromFull(snapshotDir, recoveryPath, config).isOkOr:
+        warn "Chain rebuild from full snapshot failed, continuing with cleanup",
+          error = error.msg
+
+      # Count after to determine orphans removed
+      let afterSnapshots = listSnapshots(snapshotDir).valueOr:
+        return err(error)
+      orphansRemoved = beforeCount - afterSnapshots.len
+      if orphansRemoved > 0:
+        info "Removed orphaned snapshots during chain rebuild", count = orphansRemoved
+    else:
+      debug "Recovery point is incremental, skipping chain rebuild",
+        path = recoveryPath
+
+  # Step 3: Clean up incomplete snapshots
+  let cleanupRes = cleanupIncompleteSnapshots(snapshotDir, config).valueOr:
+    return err(error)
+
+  # Step 4: Repair metadata on remaining valid snapshots
+  let repairRes = repairChainMetadata(snapshotDir, config).valueOr:
+    return err(error)
+
+  info "Chain recovery completed",
+       incompletesCleaned = cleanupRes.cleaned,
+       orphansRemoved = orphansRemoved,
+       metadataRepaired = repairRes
+
+  ok((incompletesCleaned: cleanupRes.cleaned, orphansRemoved: orphansRemoved, metadataRepaired: repairRes))
 
 {.pop.}

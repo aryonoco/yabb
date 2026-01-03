@@ -18,5 +18,6 @@ import test_paths
 import test_retention
 import test_types
 import test_btrfs
+import test_shutdown
 
 echo "Running YABB test suite..."

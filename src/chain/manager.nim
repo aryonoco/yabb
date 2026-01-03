@@ -9,7 +9,7 @@
 ## Chain management for BTRFS snapshots
 ## Handles chain optimization and verification
 
-import std/[os, algorithm, times, sequtils, options]
+import std/[os, algorithm, sequtils, options]
 import ../wrappers/log
 import ../types
 import ../errors
@@ -40,6 +40,9 @@ type
     isValid*: bool
 
 {.push raises: [].}
+
+# Forward declaration - defined after shouldForceFullSnapshot
+proc getChainDepth*(path: string): int
 
 proc getChainInfo*(snapshotDir: string): YabbResult[ChainInfo] =
   ## Get information about the snapshot chain
@@ -122,6 +125,26 @@ proc verifyChain*(snapshotDir: string, config: YabbConfig): YabbResult[bool] =
     of pvsMetadataError, pvsFullSnapshot, pvsValidParent:
       return err(btrfsError("Invalid snapshot: " & snap.path))
 
+  # Validate chainPosition metadata against actual parent chain depth
+  # This detects metadata corruption where chainPosition doesn't match reality
+  var depthMismatches = 0
+  for snap in chainInfo.snapshots:
+    let meta = getSnapshotMetadata(snap.path)
+    if meta.isOk:
+      let actualDepth = getChainDepth(snap.path)
+      let storedPosition = meta.value.chainPosition
+      if actualDepth != storedPosition:
+        depthMismatches += 1
+        warn "Chain depth mismatch detected",
+          path = snap.path,
+          storedPosition = storedPosition,
+          actualDepth = actualDepth
+
+  if depthMismatches > 0:
+    warn "Chain has metadata inconsistencies",
+      mismatches = depthMismatches,
+      total = chainInfo.snapshots.len
+
   debug "Chain verification passed", snapshots = chainInfo.snapshots.len
   ok(true)
 
@@ -148,53 +171,6 @@ proc shouldForceFullSnapshot*(
   debug "Chain length within limits",
     current = chainInfo.chainLength, max = maxChainLength
   ok(false)
-
-proc optimizeChain*(
-  snapshotDir: string,
-  maxChainLength: int,
-  config: YabbConfig
-): YabbResult[int] =
-  ## Optimize chain by creating new full snapshot if chain is too long
-  ## Returns number of snapshots consolidated
-  ## DEPRECATED: Use shouldForceFullSnapshot instead
-  if config.dryRun:
-    debug "DRY_RUN: Would optimize chain", snapshotDir = snapshotDir, maxChainLength = maxChainLength
-    return ok(0)
-
-  let chainInfo = getChainInfo(snapshotDir).valueOr:
-    return err(error)
-
-  if chainInfo.chainLength <= maxChainLength:
-    debug "Chain length within limits", current = chainInfo.chainLength, max = maxChainLength
-    return ok(0)
-
-  # Chain optimization would require creating a new full snapshot
-  # This is typically done by the main backup process when forceFull is set
-  info "Chain exceeds maximum length, recommend full backup",
-    current = chainInfo.chainLength, max = maxChainLength
-
-  ok(0)
-
-proc findLatestValidSnapshot*(snapshotDir: string): YabbResult[Opt[string]] =
-  ## Find the most recent valid snapshot for incremental backup
-  let snapshots = listSnapshots(snapshotDir).valueOr:
-    return err(error)
-
-  if snapshots.len == 0:
-    return ok(Opt.none(string))
-
-  # Sort by timestamp descending (newest first) - immutable sorted copy
-  let sorted = snapshots.sorted(proc(a, b: Snapshot): int {.raises: [].} = cmp(b.timestamp, a.timestamp))
-
-  # Find first snapshot with valid metadata
-  let found = sorted.findFirst(block:
-    let hasMeta = hasRequiredProperties(it.path)
-    hasMeta.isOk and hasMeta.value
-  )
-  if found.isSome:
-    ok(Opt.some(found.get.path))
-  else:
-    ok(Opt.none(string))
 
 proc getChainDepth*(path: string): int =
   ## Get the depth of a snapshot in the chain (number of parents)

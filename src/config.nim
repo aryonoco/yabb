@@ -12,7 +12,9 @@ import std/[os, strutils]
 import parsetoml
 import types
 import errors
+import wrappers/log      # warn for config warnings
 import btrfs/operations  # isBtrfsFilesystem
+import utils/paths       # sanitizePath, checkPathPermissions
 
 const
   DefaultRetentionHourly* = 24
@@ -25,6 +27,46 @@ const
   DefaultRetryDelay* = 5
 
 {.push raises: [].}
+
+func validateDependencies*(cfg: YabbConfig): ConfigValidationResult =
+  ## Pure function: validate inter-variable dependencies
+  ## Returns warnings as immutable data, not side effects
+  result = initValidationResult()
+
+  # Retention dependency check - daily requires hourly to be meaningful
+  if cfg.retention.daily > 0 and cfg.retention.hourly == 0:
+    result = result.withWarning("retention",
+      "RETENTION_DAILY is set but RETENTION_HOURLY is disabled")
+
+  # Weekly requires daily
+  if cfg.retention.weekly > 0 and cfg.retention.daily == 0:
+    result = result.withWarning("retention",
+      "RETENTION_WEEKLY is set but RETENTION_DAILY is disabled")
+
+  # Monthly requires weekly
+  if cfg.retention.monthly > 0 and cfg.retention.weekly == 0:
+    result = result.withWarning("retention",
+      "RETENTION_MONTHLY is set but RETENTION_WEEKLY is disabled")
+
+  # Yearly requires monthly
+  if cfg.retention.yearly > 0 and cfg.retention.monthly == 0:
+    result = result.withWarning("retention",
+      "RETENTION_YEARLY is set but RETENTION_MONTHLY is disabled")
+
+  # Retry delay check
+  if cfg.retryCount > 1 and cfg.retryDelay < 1:
+    result = result.withWarning("retry",
+      "RETRY_DELAY should be at least 1 second when retries enabled")
+
+  # Hourly minimum recommendation
+  if cfg.retention.hourly > 0 and cfg.retention.hourly < 6:
+    result = result.withWarning("retention.hourly",
+      "RETENTION_HOURLY below recommended minimum of 6 hours")
+
+  # Chain length sanity check
+  if cfg.chain.maxLength > 50:
+    result = result.withWarning("chain.max_length",
+      "Long snapshot chains (>50) may impact restore performance")
 
 proc parseCompressionLevel*(s: string): YabbResult[CompressionLevel] =
   ## Parse compression string (algo:level) into CompressionLevel.
@@ -68,16 +110,27 @@ proc loadConfig*(path: string = DefaultConfigPath): YabbResult[YabbConfig] =
 
   let paths = try: toml["paths"]
               except KeyError: return err(configError("Missing [paths] section"))
-  let srcDir = paths.getOrDefault("src_dir").getStr("")
-  let dstDir = paths.getOrDefault("dst_dir").getStr("")
-  let snapshotDir = paths.getOrDefault("snapshot_dir").getStr("")
 
-  if srcDir.len == 0 or dstDir.len == 0 or snapshotDir.len == 0:
+  # Extract raw paths from TOML
+  let srcDirRaw = paths.getOrDefault("src_dir").getStr("")
+  let dstDirRaw = paths.getOrDefault("dst_dir").getStr("")
+  let snapshotDirRaw = paths.getOrDefault("snapshot_dir").getStr("")
+
+  if srcDirRaw.len == 0 or dstDirRaw.len == 0 or snapshotDirRaw.len == 0:
     return err(configError("Missing required paths"))
+
+  # Sanitize paths early - validates format, resolves symlinks, checks for traversal
+  let srcDir = sanitizePath(srcDirRaw).valueOr:
+    return err(configError("Invalid source directory: " & error.msg))
+  let dstDir = sanitizePath(dstDirRaw).valueOr:
+    return err(configError("Invalid destination directory: " & error.msg))
+  let snapshotDir = sanitizePath(snapshotDirRaw).valueOr:
+    return err(configError("Invalid snapshot directory: " & error.msg))
 
   let comp = toml.getOrDefault("compression")
   let algo = comp.getOrDefault("algorithm").getStr("zstd")
   let level = comp.getOrDefault("level").getInt(3)
+  let compress = comp.getOrDefault("enabled").getBool(true)  # Default: use --compressed-data
   let compression = parseCompressionLevel(algo & ":" & $level).valueOr:
     return err(error)
 
@@ -86,11 +139,12 @@ proc loadConfig*(path: string = DefaultConfigPath): YabbResult[YabbConfig] =
   let optim = toml.getOrDefault("optimization")
   let chainCfg = toml.getOrDefault("chain")
 
-  ok(YabbConfig(
-    srcDir: srcDir,
-    dstDir: dstDir,
-    snapshotDir: snapshotDir,
+  let cfg = YabbConfig(
+    srcDir: SourcePath(srcDir),
+    dstDir: DestPath(dstDir),
+    snapshotDir: SnapshotDirPath(snapshotDir),
     compression: compression,
+    compress: compress,
     retention: RetentionPolicy(
       hourly: ret.getOrDefault("hourly").getInt(DefaultRetentionHourly),
       daily: ret.getOrDefault("daily").getInt(DefaultRetentionDaily),
@@ -114,7 +168,14 @@ proc loadConfig*(path: string = DefaultConfigPath): YabbResult[YabbConfig] =
     maxParallelJobs: opts.getOrDefault("max_parallel_jobs").getInt(1),
     retryCount: opts.getOrDefault("retry_count").getInt(DefaultRetryCount),
     retryDelay: opts.getOrDefault("retry_delay").getInt(DefaultRetryDelay)
-  ))
+  )
+
+  # Validate config dependencies and log any warnings
+  let validation = validateDependencies(cfg)
+  for w in validation.warnings:
+    warn "Config warning", field = w.field, message = w.message
+
+  ok(cfg)
 
 func withOverrides*(cfg: YabbConfig, debug, dryRun, forceFull: bool): YabbConfig =
   ## Pure function: creates new config with CLI overrides applied
@@ -124,6 +185,7 @@ func withOverrides*(cfg: YabbConfig, debug, dryRun, forceFull: bool): YabbConfig
     dstDir: cfg.dstDir,
     snapshotDir: cfg.snapshotDir,
     compression: cfg.compression,
+    compress: cfg.compress,
     retention: cfg.retention,
     optimization: cfg.optimization,
     chain: cfg.chain,
@@ -139,14 +201,22 @@ func withOverrides*(cfg: YabbConfig, debug, dryRun, forceFull: bool): YabbConfig
 proc validateConfig*(config: YabbConfig): YabbResult[void] =
   ## Validate configuration: directories exist and are on btrfs filesystem
   # Check directories exist
-  if not dirExists(config.srcDir):
-    return err(dirError("Source directory does not exist: " & config.srcDir))
-  if not dirExists(config.dstDir):
-    return err(dirError("Destination directory does not exist: " & config.dstDir))
-  if not dirExists(config.snapshotDir):
-    return err(dirError("Snapshot directory does not exist: " & config.snapshotDir))
+  if not dirExists($config.srcDir):
+    return err(dirError("Source directory does not exist: " & $config.srcDir))
+  if not dirExists($config.dstDir):
+    return err(dirError("Destination directory does not exist: " & $config.dstDir))
+  if not dirExists($config.snapshotDir):
+    return err(dirError("Snapshot directory does not exist: " & $config.snapshotDir))
 
-  # Note: Optimization thresholds are now enforced at compile-time via Percentage type (0-100)
+  # Check permissions - source needs read+execute, dest/snapshot need read+write+execute
+  checkPathPermissions($config.srcDir, {ppRead, ppExecute}).isOkOr:
+    return err(dirError("Source directory: " & error.msg))
+  checkPathPermissions($config.dstDir, {ppRead, ppWrite, ppExecute}).isOkOr:
+    return err(dirError("Destination directory: " & error.msg))
+  checkPathPermissions($config.snapshotDir, {ppRead, ppWrite, ppExecute}).isOkOr:
+    return err(dirError("Snapshot directory: " & error.msg))
+
+  # Note: Optimization thresholds are enforced at compile time via Percentage type (0-100)
   # Config loading clamps out-of-range values automatically
 
   # Validate chain settings
@@ -154,24 +224,24 @@ proc validateConfig*(config: YabbConfig): YabbResult[void] =
     return err(validationError("chain.max_length must be at least 1, got: " &
       $config.chain.maxLength))
 
-  # Verify btrfs filesystem (plan requirement)
-  let srcBtrfs = isBtrfsFilesystem(config.srcDir)
+  # Verify btrfs filesystem 
+  let srcBtrfs = isBtrfsFilesystem($config.srcDir)
   if srcBtrfs.isErr:
     return err(dirError("Cannot check filesystem type for source: " & srcBtrfs.error.msg))
   if not srcBtrfs.value:
-    return err(dirError("Source directory is not on btrfs: " & config.srcDir))
+    return err(dirError("Source directory is not on btrfs: " & $config.srcDir))
 
-  let dstBtrfs = isBtrfsFilesystem(config.dstDir)
+  let dstBtrfs = isBtrfsFilesystem($config.dstDir)
   if dstBtrfs.isErr:
     return err(dirError("Cannot check filesystem type for destination: " & dstBtrfs.error.msg))
   if not dstBtrfs.value:
-    return err(dirError("Destination directory is not on btrfs: " & config.dstDir))
+    return err(dirError("Destination directory is not on btrfs: " & $config.dstDir))
 
-  let snapBtrfs = isBtrfsFilesystem(config.snapshotDir)
+  let snapBtrfs = isBtrfsFilesystem($config.snapshotDir)
   if snapBtrfs.isErr:
     return err(dirError("Cannot check filesystem type for snapshot dir: " & snapBtrfs.error.msg))
   if not snapBtrfs.value:
-    return err(dirError("Snapshot directory is not on btrfs: " & config.snapshotDir))
+    return err(dirError("Snapshot directory is not on btrfs: " & $config.snapshotDir))
 
   ok()
 

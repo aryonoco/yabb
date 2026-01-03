@@ -38,22 +38,7 @@ type
   # File system paths - prevent mixing source/dest/config paths
   SourcePath* = distinct string       ## Source directory path for backups
   DestPath* = distinct string         ## Destination directory path for backups
-  ConfigPath* = distinct string       ## Configuration file path
   SnapshotDirPath* = distinct string  ## Snapshot directory within dest
-
-  # Legacy path types (keep for compatibility)
-  SnapshotPath* = distinct string     ## Path to a snapshot directory
-  SnapshotName* = distinct string     ## Name of a snapshot (without path)
-
-  # Identifiers
-  Uuid* = distinct string             ## UUID string value
-
-  # Time types
-  UnixTimestamp* = distinct int64     ## Unix timestamp in seconds
-
-  # Size types (prevent mixing bytes/megabytes)
-  Bytes* = distinct int64             ## Size in bytes
-  Megabytes* = distinct Natural       ## Size in megabytes
 
 # =============================================================================
 # Borrowing for string-based distinct types
@@ -65,50 +50,7 @@ template borrowStringOps(T: typedesc) =
 
 borrowStringOps(SourcePath)
 borrowStringOps(DestPath)
-borrowStringOps(ConfigPath)
 borrowStringOps(SnapshotDirPath)
-borrowStringOps(SnapshotPath)
-borrowStringOps(SnapshotName)
-borrowStringOps(Uuid)
-
-# =============================================================================
-# Borrowing for numeric distinct types
-# =============================================================================
-proc `$`*(x: UnixTimestamp): string {.borrow.}
-proc `==`*(a, b: UnixTimestamp): bool {.borrow.}
-proc `<`*(a, b: UnixTimestamp): bool {.borrow.}
-proc `<=`*(a, b: UnixTimestamp): bool {.borrow.}
-
-proc `$`*(x: Bytes): string {.borrow.}
-proc `==`*(a, b: Bytes): bool {.borrow.}
-proc `<`*(a, b: Bytes): bool {.borrow.}
-proc `<=`*(a, b: Bytes): bool {.borrow.}
-proc `+`*(a, b: Bytes): Bytes {.borrow.}
-proc `-`*(a, b: Bytes): Bytes {.borrow.}
-
-proc `$`*(x: Megabytes): string {.borrow.}
-proc `==`*(a, b: Megabytes): bool {.borrow.}
-proc `<`*(a, b: Megabytes): bool {.borrow.}
-proc `<=`*(a, b: Megabytes): bool {.borrow.}
-
-# =============================================================================
-# Conversion functions (explicit only - no implicit conversions!)
-# =============================================================================
-func toBytes*(mb: Megabytes): Bytes =
-  ## Convert megabytes to bytes (explicit conversion required)
-  Bytes(mb.int64 * 1024 * 1024)
-
-func toMegabytes*(b: Bytes): Megabytes =
-  ## Convert bytes to megabytes (explicit conversion required)
-  Megabytes(b.int64 div (1024 * 1024))
-
-func toUnix*(ts: UnixTimestamp): int64 =
-  ## Extract raw unix timestamp value
-  int64(ts)
-
-func fromUnix*(ts: int64): UnixTimestamp =
-  ## Create UnixTimestamp from raw value
-  UnixTimestamp(ts)
 
 type
   ExitCode* = enum
@@ -123,6 +65,7 @@ type
     ecLockHeld = 8      # Lock held by another instance (not an error, exit 0 in CLI)
     ecLockError = 9     # Lock file I/O error (permission denied, etc.)
     ecDeviceErrors = 10 # BTRFS device has errors
+    ecShutdown = 11     # Clean shutdown via signal (SIGTERM, SIGINT, etc.)
 
   CompressionAlgo* = enum
     caZstd = "zstd"
@@ -138,18 +81,6 @@ type
   CompressionLevel* = object
     algo*: CompressionAlgo
     level*: range[1..15]
-
-  # New case object with algorithm-specific level validation
-  CompressionConfig* = object
-    ## Compression configuration with compile-time level range validation.
-    ## Each algorithm has its own valid level range enforced at compile-time.
-    case algo*: CompressionAlgo
-    of caZstd:
-      zstdLevel*: ZstdLevel
-    of caZlib:
-      zlibLevel*: ZlibLevel
-    of caLzo:
-      lzoLevel*: LzoLevel
 
   SnapshotType* = enum
     stFull = "full"
@@ -180,10 +111,11 @@ type
     maxLength*: Natural     # Maximum chain length before forcing full snapshot
 
   YabbConfig* = object
-    srcDir*: string
-    dstDir*: string
-    snapshotDir*: string
-    compression*: CompressionLevel  # Simple object (CompressionConfig for validation)
+    srcDir*: SourcePath
+    dstDir*: DestPath
+    snapshotDir*: SnapshotDirPath
+    compression*: CompressionLevel
+    compress*: bool  # Whether to use --compressed-data on btrfs send (default: true)
     retention*: RetentionPolicy
     optimization*: OptimizationConfig
     chain*: ChainConfig
@@ -208,6 +140,20 @@ type
   ExecutionStats* = object
     errors*: int
     warnings*: int
+    snapshotsCreated*: int
+    snapshotsDeleted*: int
+    startTime*: float       ## Unix epoch timestamp when execution started
+    operations*: seq[string] ## List of operations performed
+
+  # Configuration validation types - pure functional approach
+  ConfigWarning* = object
+    ## Immutable warning from config validation
+    field*: string
+    message*: string
+
+  ConfigValidationResult* = object
+    ## Immutable result of config dependency validation
+    warnings*: seq[ConfigWarning]
 
   # =============================================================================
   # Object Variants for Pattern Matching (ADTs / Sum Types)
@@ -244,53 +190,68 @@ type
 {.push raises: [].}
 
 # ExecutionStats functional operations
-func initStats*(): ExecutionStats =
-  ExecutionStats(errors: 0, warnings: 0)
+func initStats*(startTime: float = 0.0): ExecutionStats =
+  ExecutionStats(
+    errors: 0, warnings: 0,
+    snapshotsCreated: 0, snapshotsDeleted: 0,
+    startTime: startTime, operations: @[]
+  )
 
 func withError*(s: ExecutionStats): ExecutionStats =
-  ExecutionStats(errors: s.errors + 1, warnings: s.warnings)
+  ExecutionStats(
+    errors: s.errors + 1, warnings: s.warnings,
+    snapshotsCreated: s.snapshotsCreated, snapshotsDeleted: s.snapshotsDeleted,
+    startTime: s.startTime, operations: s.operations
+  )
 
 func withWarning*(s: ExecutionStats): ExecutionStats =
-  ExecutionStats(errors: s.errors, warnings: s.warnings + 1)
+  ExecutionStats(
+    errors: s.errors, warnings: s.warnings + 1,
+    snapshotsCreated: s.snapshotsCreated, snapshotsDeleted: s.snapshotsDeleted,
+    startTime: s.startTime, operations: s.operations
+  )
+
+func withSnapshotCreated*(s: ExecutionStats): ExecutionStats =
+  ExecutionStats(
+    errors: s.errors, warnings: s.warnings,
+    snapshotsCreated: s.snapshotsCreated + 1, snapshotsDeleted: s.snapshotsDeleted,
+    startTime: s.startTime, operations: s.operations
+  )
+
+func withSnapshotsDeleted*(s: ExecutionStats, count: int): ExecutionStats =
+  ExecutionStats(
+    errors: s.errors, warnings: s.warnings,
+    snapshotsCreated: s.snapshotsCreated, snapshotsDeleted: s.snapshotsDeleted + count,
+    startTime: s.startTime, operations: s.operations
+  )
+
+func withOperation*(s: ExecutionStats, op: string): ExecutionStats =
+  ExecutionStats(
+    errors: s.errors, warnings: s.warnings,
+    snapshotsCreated: s.snapshotsCreated, snapshotsDeleted: s.snapshotsDeleted,
+    startTime: s.startTime, operations: s.operations & @[op]
+  )
 
 func combine*(a, b: ExecutionStats): ExecutionStats =
-  ExecutionStats(errors: a.errors + b.errors, warnings: a.warnings + b.warnings)
+  ExecutionStats(
+    errors: a.errors + b.errors, warnings: a.warnings + b.warnings,
+    snapshotsCreated: a.snapshotsCreated + b.snapshotsCreated,
+    snapshotsDeleted: a.snapshotsDeleted + b.snapshotsDeleted,
+    startTime: a.startTime, operations: a.operations & b.operations
+  )
 
-# =============================================================================
-# CompressionConfig helpers
-# =============================================================================
+# ConfigValidationResult functional operations
+func initValidationResult*(): ConfigValidationResult =
+  ConfigValidationResult(warnings: @[])
 
-func level*(c: CompressionConfig): int =
-  ## Get compression level as int (for serialization/logging)
-  case c.algo
-  of caZstd: c.zstdLevel.int
-  of caZlib: c.zlibLevel.int
-  of caLzo: c.lzoLevel.int
+func withWarning*(r: ConfigValidationResult, field, message: string): ConfigValidationResult =
+  ConfigValidationResult(warnings: r.warnings & @[ConfigWarning(field: field, message: message)])
 
-func zstdConfig*(level: ZstdLevel): CompressionConfig =
-  ## Create zstd compression config with compile-time level validation
-  CompressionConfig(algo: caZstd, zstdLevel: level)
+func hasWarnings*(r: ConfigValidationResult): bool =
+  r.warnings.len > 0
 
-func zlibConfig*(level: ZlibLevel): CompressionConfig =
-  ## Create zlib compression config with compile-time level validation
-  CompressionConfig(algo: caZlib, zlibLevel: level)
-
-func lzoConfig*(level: LzoLevel): CompressionConfig =
-  ## Create lzo compression config with compile-time level validation
-  CompressionConfig(algo: caLzo, lzoLevel: level)
-
-func toCompressionConfig*(cl: CompressionLevel): CompressionConfig =
-  ## Convert legacy CompressionLevel to new CompressionConfig
-  ## Used for migration from old config format
-  case cl.algo
-  of caZstd: zstdConfig(ZstdLevel(cl.level))
-  of caZlib: zlibConfig(ZlibLevel(min(9, cl.level)))
-  of caLzo: lzoConfig(LzoLevel(min(9, cl.level)))
-
-func toCompressionLevel*(cc: CompressionConfig): CompressionLevel =
-  ## Convert CompressionConfig back to legacy CompressionLevel
-  ## Used for backward compatibility
-  CompressionLevel(algo: cc.algo, level: cc.level)
+func combine*(a, b: ConfigValidationResult): ConfigValidationResult =
+  ConfigValidationResult(warnings: a.warnings & b.warnings)
 
 # =============================================================================
 # ParsedUsageLine helpers

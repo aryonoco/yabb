@@ -18,7 +18,7 @@ import logging
 import btrfs/[snapshot, operations, storage]
 import chain/[manager, recovery]
 import retention/manager as retentionManager
-import utils/[lock, prereq, terminal, functional, progress]
+import utils/[lock, prereq, terminal, functional, progress, shutdown]
 
 type
   OutputFormat = enum
@@ -37,6 +37,19 @@ func newOutputContext*(json: bool, isTty: bool): OutputContext =
   )
 
 const LockTimeout* = 300  # 5 minutes
+
+# Workflow progress steps for the main backup operation
+const BackupWorkflowSteps* = @[
+  WorkflowStep(name: "Load config", activeName: "Loading configuration..."),
+  WorkflowStep(name: "Check prerequisites", activeName: "Checking prerequisites..."),
+  WorkflowStep(name: "Acquire lock", activeName: "Acquiring lock..."),
+  WorkflowStep(name: "Validate config", activeName: "Validating configuration..."),
+  WorkflowStep(name: "Check space", activeName: "Checking filesystem space..."),
+  WorkflowStep(name: "Cleanup incomplete", activeName: "Cleaning up incomplete snapshots..."),
+  WorkflowStep(name: "Create snapshot", activeName: "Creating backup snapshot..."),
+  WorkflowStep(name: "Apply retention", activeName: "Applying retention policy..."),
+  WorkflowStep(name: "Finalize", activeName: "Finalizing backup..."),
+]
 
 {.push raises: [].}
 
@@ -117,8 +130,8 @@ proc cleanupResources*(cfg: YabbConfig) =
     except OSError: discard
 
   # Cleanup old temp snapshots - use functional filter then loop for side effects
-  if cfg.snapshotDir.len > 0 and dirExists(cfg.snapshotDir):
-    let snapEntries = try: toSeq(walkDir(cfg.snapshotDir)) except OSError: @[]
+  if cfg.snapshotDir.len > 0 and dirExists($cfg.snapshotDir):
+    let snapEntries = try: toSeq(walkDir($cfg.snapshotDir)) except OSError: @[]
     let oldTempSnaps = snapEntries
       .filterIt(it.kind == pcDir and extractFilename(it.path).startsWith("yabb-"))
       .filterIt(block:
@@ -138,6 +151,12 @@ proc run*(
   json: bool = false
 ): int =
   ## Run BTRFS backup with optional incremental detection
+  # Install signal handlers for graceful shutdown (SIGTERM, SIGINT, etc.)
+  installSignalHandlers()
+
+  # Initialize stats with start time for runtime tracking
+  let baseStats = initStats(epochTime())
+
   let ctx = newOutputContext(json, isTerminal())
   if ctx.colorEnabled:
     useColors = true
@@ -145,26 +164,54 @@ proc run*(
     useColors = false
   initLogging(debug)
 
+  # Create workflow progress tracker (TTY-only visual feedback)
+  let jsonMode = ctx.format == ofJson
+  var wp = newWorkflowProgress("YABB Backup", BackupWorkflowSteps)
+
+  # Helper to advance and render progress
+  template advanceProgress(step: int) =
+    wp = wp.atStep(step)
+    wp.renderStep(jsonMode)
+
   # Helper to log summary and return status
-  proc finish(cfg: YabbConfig, fileLock: sink FileLock, status: int, stats: ExecutionStats): int =
+  proc finish(cfg: YabbConfig, fileLock: sink FileLock, status: int, stats: ExecutionStats, success: bool): int =
     release(fileLock)
     cleanupResources(cfg)
+    wp.renderComplete(success, jsonMode)
     logSummary(status, stats)
+    # Forward to journald if available
+    if journalCtx.available:
+      let statusMsg = if status != 0 or stats.errors > 0:
+        "Backup completed with errors (status=" & $status & ", errors=" & $stats.errors & ")"
+      elif stats.warnings > 0:
+        "Backup completed with warnings (warnings=" & $stats.warnings & ")"
+      else:
+        "Backup completed successfully"
+      let priority = if status != 0 or stats.errors > 0: jpErr
+                     elif stats.warnings > 0: jpWarning
+                     else: jpInfo
+      journalCtx.logToJournal(statusMsg, priority)
     status
 
+  # Step 0: Load config
+  advanceProgress(0)
   let baseConfig = loadConfig(configPath).valueOr:
     error "Configuration error", msg = error.msg
-    logSummary(error.code.ord, initStats().withError())
+    logSummary(error.code.ord, baseStats.withError())
     return error.code.ord
 
   # Use immutable merge instead of mutation
   let initialCfg = baseConfig.withOverrides(debug, dryRun, forceFull)
 
+  # Step 1: Check prerequisites
+  advanceProgress(1)
   checkPrerequisites(initialCfg).isOkOr:
     error "Prerequisite check failed", msg = error.msg
-    logSummary(error.code.ord, initStats().withError())
+    logSummary(error.code.ord, baseStats.withError())
     return error.code.ord
 
+  # Step 2: Acquire lock
+  advanceProgress(2)
   let fileLock = acquireLock(LockFile, LockTimeout).valueOr:
     if error.code == ecLockHeld:
       # Another instance running - informational, not an error
@@ -172,31 +219,40 @@ proc run*(
       return ecSuccess.ord
     # Real lock error (permission denied, I/O failure, etc.)
     error "Failed to acquire lock", msg = error.msg
-    logSummary(error.code.ord, initStats().withError())
+    logSummary(error.code.ord, baseStats.withError())
     return error.code.ord
 
+  # Check for shutdown before validation
+  checkShutdown().isOkOr:
+    info "Shutdown requested, exiting"
+    return finish(initialCfg, fileLock, ecShutdown.ord, baseStats, false)
+
+  # Step 3: Validate config
+  advanceProgress(3)
   validateConfig(initialCfg).isOkOr:
     error "Config validation failed", msg = error.msg
-    return finish(initialCfg, fileLock, error.code.ord, initStats().withError())
+    return finish(initialCfg, fileLock, error.code.ord, baseStats.withError(), false)
 
-  checkFilesystemSpace(initialCfg.srcDir, initialCfg.minFreeSpace).isOkOr:
+  # Step 4: Check space
+  advanceProgress(4)
+  checkFilesystemSpace($initialCfg.srcDir, initialCfg.minFreeSpace).isOkOr:
     error "Insufficient space in source", msg = error.msg
-    return finish(initialCfg, fileLock, error.code.ord, initStats().withError())
+    return finish(initialCfg, fileLock, error.code.ord, baseStats.withError(), false)
 
-  checkFilesystemSpace(initialCfg.dstDir, initialCfg.minFreeSpace).isOkOr:
+  checkFilesystemSpace($initialCfg.dstDir, initialCfg.minFreeSpace).isOkOr:
     error "Insufficient space in destination", msg = error.msg
-    return finish(initialCfg, fileLock, error.code.ord, initStats().withError())
+    return finish(initialCfg, fileLock, error.code.ord, baseStats.withError(), false)
 
-  verifyCompression(initialCfg.srcDir, initialCfg.compression).isOkOr:
+  verifyCompression($initialCfg.srcDir, initialCfg.compression).isOkOr:
     error "Compression verification failed", msg = error.msg
-    return finish(initialCfg, fileLock, error.code.ord, initStats().withError())
+    return finish(initialCfg, fileLock, error.code.ord, baseStats.withError(), false)
 
   # Check chain length and determine final forceFull value
   let needsForceFull = if initialCfg.forceFull:
     false  # Already forcing full, no need to check
   else:
     let needsFull = shouldForceFullSnapshot(
-      initialCfg.snapshotDir,
+      $initialCfg.snapshotDir,
       initialCfg.chain.maxLength,
       initialCfg.dryRun
     ).valueOr:
@@ -212,40 +268,78 @@ proc run*(
   else:
     initialCfg
 
+  # Check for shutdown before cleanup
+  checkShutdown().isOkOr:
+    info "Shutdown requested, exiting"
+    return finish(cfg, fileLock, ecShutdown.ord, baseStats, false)
+
+  # Step 5: Cleanup incomplete snapshots (always run before backup)
+  advanceProgress(5)
+  let cleanupRes = withSpinner(ctx, "Cleaning up incomplete snapshots", proc(): YabbResult[tuple[cleaned: int, failed: int]] =
+    cleanupIncompleteSnapshots($cfg.snapshotDir, cfg)
+  )
+  if cleanupRes.isErr:
+    # Cleanup failure is non-fatal - warn and continue
+    warn "Incomplete snapshot cleanup failed (non-fatal)", msg = cleanupRes.error.msg
+  elif cleanupRes.value.cleaned > 0:
+    info "Cleaned up incomplete snapshots", cleaned = cleanupRes.value.cleaned
+
+  # Check for shutdown before snapshot creation
+  checkShutdown().isOkOr:
+    info "Shutdown requested, exiting"
+    return finish(cfg, fileLock, ecShutdown.ord, baseStats, false)
+
+  # Step 6: Create snapshot
+  advanceProgress(6)
   let snapshotRes = withSpinner(ctx, "Creating backup snapshot", proc(): YabbResult[Snapshot] =
-    createBackupSnapshot(cfg, cfg.srcDir, cfg.snapshotDir)
-  , successCodes = {ecNoChanges})
+    createBackupSnapshot(cfg, $cfg.srcDir, $cfg.snapshotDir)
+  , successCodes = {ecNoChanges, ecShutdown})
   if snapshotRes.isErr:
     if snapshotRes.error.code == ecNoChanges:
       info "No changes detected, skipping backup"
-      return finish(cfg, fileLock, ecNoChanges.ord, initStats())
+      return finish(cfg, fileLock, ecNoChanges.ord, baseStats, true)  # No changes is success
+    if snapshotRes.error.code == ecShutdown:
+      info "Shutdown requested during snapshot"
+      return finish(cfg, fileLock, ecShutdown.ord, baseStats, false)
     error "Snapshot creation failed", msg = snapshotRes.error.msg
-    return finish(cfg, fileLock, snapshotRes.error.code.ord, initStats().withError())
+    return finish(cfg, fileLock, snapshotRes.error.code.ord, baseStats.withError(), false)
 
   info "Snapshot created successfully", path = snapshotRes.value.path
+  let snapshotStats = baseStats.withSnapshotCreated().withOperation("snapshot created")
 
+  # Check for shutdown before retention
+  checkShutdown().isOkOr:
+    info "Shutdown requested, exiting"
+    return finish(cfg, fileLock, ecShutdown.ord, snapshotStats, false)
+
+  # Step 7: Apply retention
+  advanceProgress(7)
   let retentionRes = withSpinner(ctx, "Applying retention policy", proc(): YabbResult[tuple[kept, deleted: int]] =
-    applyRetention(cfg.snapshotDir, cfg.retention, cfg)
+    applyRetention($cfg.snapshotDir, cfg.retention, cfg)
   )
   if retentionRes.isErr:
     error "Retention policy failed", msg = retentionRes.error.msg
-    return finish(cfg, fileLock, retentionRes.error.code.ord, initStats().withError())
+    return finish(cfg, fileLock, retentionRes.error.code.ord, snapshotStats.withError(), false)
 
   let (kept, deleted) = retentionRes.value
   info "Retention applied", kept = kept, deleted = deleted
+  let retentionStats = snapshotStats.withSnapshotsDeleted(deleted).withOperation("retention applied")
+
+  # Step 8: Finalize (includes optional storage optimization)
+  advanceProgress(8)
 
   # Auto-optimize storage after retention if enabled and deletions occurred
   let finalStats = if cfg.optimization.enabled and deleted > 0:
-    let optRes = optimizeStorage(cfg.snapshotDir, cfg)
+    let optRes = optimizeStorage($cfg.snapshotDir, cfg)
     if optRes.isErr:
       warn "Storage optimization failed (non-fatal)", msg = optRes.error.msg
-      initStats().withWarning()
+      retentionStats.withWarning()
     else:
-      initStats()
+      retentionStats.withOperation("storage optimized")
   else:
-    initStats()
+    retentionStats
 
-  finish(cfg, fileLock, ecSuccess.ord, finalStats)
+  finish(cfg, fileLock, ecSuccess.ord, finalStats, true)
 
 # =============================================================================
 # Validate Subcommand
@@ -280,9 +374,9 @@ proc validate*(
     outputJson(ctx, %*{
       "status": "valid",
       "config": {
-        "srcDir": cfg.srcDir,
-        "dstDir": cfg.dstDir,
-        "snapshotDir": cfg.snapshotDir,
+        "srcDir": $cfg.srcDir,
+        "dstDir": $cfg.dstDir,
+        "snapshotDir": $cfg.snapshotDir,
         "compression": {
           "algorithm": $cfg.compression.algo,
           "level": cfg.compression.level
@@ -299,9 +393,9 @@ proc validate*(
   else:
     outputSuccess(ctx, "Configuration is valid")
     printHeader("Configuration")
-    printKeyValue("Source", cfg.srcDir)
-    printKeyValue("Destination", cfg.dstDir)
-    printKeyValue("Snapshots", cfg.snapshotDir)
+    printKeyValue("Source", $cfg.srcDir)
+    printKeyValue("Destination", $cfg.dstDir)
+    printKeyValue("Snapshots", $cfg.snapshotDir)
     printKeyValue("Compression", $cfg.compression.algo & " (level " & $cfg.compression.level & ")")
     printSeparator()
     printHeader("Retention Policy")
@@ -333,11 +427,11 @@ proc status*(
   let cfg = cfgResult.value
 
   # Get snapshot list - immutable binding
-  let snapshots = listSnapshots(cfg.snapshotDir).valueOr(@[])
+  let snapshots = listSnapshots($cfg.snapshotDir).valueOr(@[])
 
   # Get disk usage
-  let srcUsage = getFilesystemUsage(cfg.srcDir)
-  let dstUsage = getFilesystemUsage(cfg.dstDir)
+  let srcUsage = getFilesystemUsage($cfg.srcDir)
+  let dstUsage = getFilesystemUsage($cfg.dstDir)
 
   if ctx.format == ofJson:
     # Build JSON array using mapIt
@@ -376,7 +470,7 @@ proc status*(
     outputJson(ctx, jsonData)
   else:
     printHeader("YABB Status")
-    printKeyValue("Snapshot directory", cfg.snapshotDir)
+    printKeyValue("Snapshot directory", $cfg.snapshotDir)
     printKeyValue("Total snapshots", $snapshots.len)
     printSeparator()
 
@@ -435,8 +529,8 @@ proc optimize*(
 
   # Run operations and collect results with spinner feedback
   let defragResult = if defrag:
-    let res = withSpinner(ctx, "Defragmenting " & cfg.snapshotDir, proc(): YabbResult[void] =
-      defragment(cfg.snapshotDir, dryRun)
+    let res = withSpinner(ctx, "Defragmenting " & $cfg.snapshotDir, proc(): YabbResult[void] =
+      defragment($cfg.snapshotDir, dryRun)
     )
     if res.isErr and ctx.format == ofJson:
       outputError(ctx, "Defragmentation failed: " & res.error.msg)
@@ -445,8 +539,8 @@ proc optimize*(
     Opt.none(bool)
 
   let balanceResult = if balance:
-    let res = withSpinner(ctx, "Balancing " & cfg.snapshotDir, proc(): YabbResult[void] =
-      storage.balance(cfg.snapshotDir, dryRun)
+    let res = withSpinner(ctx, "Balancing " & $cfg.snapshotDir, proc(): YabbResult[void] =
+      storage.balance($cfg.snapshotDir, dryRun)
     )
     if res.isErr and ctx.format == ofJson:
       outputError(ctx, "Balance failed: " & res.error.msg)
@@ -455,8 +549,8 @@ proc optimize*(
     Opt.none(bool)
 
   let scrubResult = if scrub:
-    let res = withSpinner(ctx, "Scrubbing " & cfg.snapshotDir, proc(): YabbResult[void] =
-      storage.scrub(cfg.snapshotDir, dryRun)
+    let res = withSpinner(ctx, "Scrubbing " & $cfg.snapshotDir, proc(): YabbResult[void] =
+      storage.scrub($cfg.snapshotDir, dryRun)
     )
     if res.isErr and ctx.format == ofJson:
       outputError(ctx, "Scrub failed: " & res.error.msg)
@@ -513,7 +607,7 @@ proc health*(
     return valResult.error.code.ord
 
   # Get chain info
-  let chainInfoRes = getChainInfo(cfg.snapshotDir)
+  let chainInfoRes = getChainInfo($cfg.snapshotDir)
   if chainInfoRes.isErr:
     outputError(ctx, "Failed to get chain info: " & chainInfoRes.error.msg)
     return chainInfoRes.error.code.ord
@@ -522,7 +616,7 @@ proc health*(
 
   # Diagnose chain issues
   let diagRes = withSpinner(ctx, "Diagnosing chain health", proc(): YabbResult[seq[ChainDiagnostic]] =
-    diagnoseChain(cfg.snapshotDir)
+    diagnoseChain($cfg.snapshotDir)
   )
   if diagRes.isErr:
     outputError(ctx, "Failed to diagnose chain: " & diagRes.error.msg)
@@ -531,7 +625,7 @@ proc health*(
   let issues = diagRes.value
 
   # Check for device errors
-  let hasErr = hasErrors(cfg.snapshotDir)
+  let hasErr = hasErrors($cfg.snapshotDir)
   let deviceErrors = if hasErr.isOk: hasErr.value else: false
 
   if ctx.format == ofJson:
@@ -554,7 +648,7 @@ proc health*(
     })
   else:
     printHeader("Chain Health Report")
-    printKeyValue("Snapshot directory", cfg.snapshotDir)
+    printKeyValue("Snapshot directory", $cfg.snapshotDir)
     printKeyValue("Chain length", $chainInfo.chainLength)
     printKeyValue("Full snapshots", $chainInfo.fullSnapshotCount)
     printKeyValue("Incremental snapshots", $chainInfo.incrementalCount)
@@ -577,22 +671,27 @@ proc health*(
     if ctx.format != ofJson:
       printSeparator()
 
-    let repairRes = withSpinner(ctx, "Repairing chain metadata", proc(): YabbResult[int] =
-      repairChainMetadata(cfg.snapshotDir, cfg)
+    # Use recoverChain() which does cleanup, chain rebuild, and metadata repair
+    let recoverRes = withSpinner(ctx, "Recovering chain (cleanup + rebuild + repair)", proc(): YabbResult[tuple[incompletesCleaned: int, orphansRemoved: int, metadataRepaired: int]] =
+      recoverChain($cfg.snapshotDir, cfg)
     )
-    if repairRes.isErr:
-      outputError(ctx, "Repair failed: " & repairRes.error.msg)
-      return repairRes.error.code.ord
+    if recoverRes.isErr:
+      outputError(ctx, "Recovery failed: " & recoverRes.error.msg)
+      return recoverRes.error.code.ord
 
-    let repaired = repairRes.value
+    let (cleaned, orphans, repaired) = recoverRes.value
     if ctx.format == ofJson:
-      outputJson(ctx, %*{"repaired": repaired})
+      outputJson(ctx, %*{"incompletesCleaned": cleaned, "orphansRemoved": orphans, "metadataRepaired": repaired})
     else:
+      if orphans > 0:
+        outputSuccess(ctx, "Removed " & $orphans & " orphaned snapshot(s)")
+      if cleaned > 0:
+        outputSuccess(ctx, "Cleaned " & $cleaned & " incomplete snapshot(s)")
       outputSuccess(ctx, "Repaired " & $repaired & " snapshot(s)")
 
     # Verify chain after repair
     let verifyRes = withSpinner(ctx, "Verifying chain after repair", proc(): YabbResult[bool] =
-      verifyChain(cfg.snapshotDir, cfg)
+      verifyChain($cfg.snapshotDir, cfg)
     )
     if verifyRes.isErr:
       outputError(ctx, "Chain verification after repair failed: " & verifyRes.error.msg)
@@ -614,9 +713,30 @@ proc health*(
 # Main Entry Point
 # =============================================================================
 
+const YabbUsage = """YABB - Yet Another BTRFS Backup
+A robust incremental backup tool using BTRFS snapshots and send/receive.
+
+Usage: yabb <command> [options]
+
+Commands:
+$subcmds
+Examples:
+  yabb run              Run backup with default config
+  yabb run --dryRun     Preview what would happen
+  yabb run --forceFull  Force full (non-incremental) backup
+  yabb validate         Verify config before running
+  yabb status           See current snapshots
+  yabb health --repair  Fix chain issues
+
+Config: /etc/yabb.toml (override with --configPath)
+Run 'yabb <command> --help' for command details.
+"""
+
 proc main*(): int =
   try:
     dispatchMulti(
+      ["multi", cmdName = "yabb", usage = YabbUsage],
+
       [run, help = {
         "configPath": "Path to TOML configuration file",
         "debug": "Enable debug logging",
