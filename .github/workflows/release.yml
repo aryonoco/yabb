@@ -44,31 +44,84 @@ jobs:
             exit 1
           fi
 
-      - name: Cache Nim toolchain
+      # ============================================================
+      # x86_64: Use choosenim (fast, prebuilt binaries)
+      # ============================================================
+      - name: Cache Nim toolchain (x86_64)
+        if: matrix.arch == 'x86_64'
         uses: actions/cache@v4
-        id: nim-cache
+        id: nim-cache-x86
         with:
           path: |
             ~/.choosenim
             ~/.nimble/bin
             ~/.nimble/pkgs2
-          key: nim-${{ matrix.arch }}-${{ env.NIM_VERSION }}-${{ hashFiles('*.nimble') }}
+          key: nim-x86_64-${{ env.NIM_VERSION }}-${{ hashFiles('*.nimble') }}
           restore-keys: |
-            nim-${{ matrix.arch }}-${{ env.NIM_VERSION }}-
-            nim-${{ matrix.arch }}-
+            nim-x86_64-${{ env.NIM_VERSION }}-
+            nim-x86_64-
 
-      - name: Install choosenim and Nim
-        if: steps.nim-cache.outputs.cache-hit != 'true'
+      - name: Install Nim via choosenim (x86_64)
+        if: matrix.arch == 'x86_64' && steps.nim-cache-x86.outputs.cache-hit != 'true'
         run: |
           curl https://nim-lang.org/choosenim/init.sh -sSf | sh -s -- -y
           export PATH="$HOME/.nimble/bin:$PATH"
           echo "$HOME/.nimble/bin" >> $GITHUB_PATH
           choosenim ${{ env.NIM_VERSION }}
 
-      - name: Add Nim to PATH (cache hit)
-        if: steps.nim-cache.outputs.cache-hit == 'true'
+      - name: Add Nim to PATH (x86_64 cache hit)
+        if: matrix.arch == 'x86_64' && steps.nim-cache-x86.outputs.cache-hit == 'true'
         run: echo "$HOME/.nimble/bin" >> $GITHUB_PATH
 
+      # ============================================================
+      # ARM64: Build from source (choosenim not supported on ARM64)
+      # ============================================================
+      - name: Cache Nim toolchain (arm64)
+        if: matrix.arch == 'arm64'
+        uses: actions/cache@v4
+        id: nim-cache-arm64
+        with:
+          path: |
+            ~/nim-${{ env.NIM_VERSION }}
+            ~/.nimble
+          key: nim-arm64-${{ env.NIM_VERSION }}-${{ hashFiles('*.nimble') }}
+          restore-keys: |
+            nim-arm64-${{ env.NIM_VERSION }}-
+            nim-arm64-
+
+      - name: Install build dependencies (arm64)
+        if: matrix.arch == 'arm64'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y build-essential xz-utils
+
+      - name: Build Nim from source (arm64)
+        if: matrix.arch == 'arm64' && steps.nim-cache-arm64.outputs.cache-hit != 'true'
+        run: |
+          cd ~
+          echo "Downloading Nim ${{ env.NIM_VERSION }} source..."
+          curl -LO "https://nim-lang.org/download/nim-${{ env.NIM_VERSION }}.tar.xz"
+          tar xf "nim-${{ env.NIM_VERSION }}.tar.xz"
+          cd "nim-${{ env.NIM_VERSION }}"
+
+          echo "Building Nim (this takes ~3-5 minutes)..."
+          sh build.sh
+          ./bin/nim c -d:release koch
+          ./koch boot -d:release
+          ./koch nimble
+
+          echo "Nim built successfully"
+          ./bin/nim --version
+
+      - name: Add Nim to PATH (arm64)
+        if: matrix.arch == 'arm64'
+        run: |
+          echo "$HOME/nim-${{ env.NIM_VERSION }}/bin" >> $GITHUB_PATH
+          echo "$HOME/.nimble/bin" >> $GITHUB_PATH
+
+      # ============================================================
+      # Common steps (both architectures)
+      # ============================================================
       - name: Verify Nim version
         run: |
           nim --version
@@ -79,7 +132,7 @@ jobs:
 
       - name: Install project dependencies
         run: |
-          # Remove stale nim package that nph build may have installed
+          # Remove stale nim package that may have been installed
           rm -rf ~/.nimble/pkgs2/nim-*
           nimble install -d --accept
           nimble setup
