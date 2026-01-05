@@ -94,31 +94,19 @@ lock:
 # BUILDING
 # =============================================================================
 
-# Build debug binary (default)
+# Build debug binary (default for development)
 build:
     @echo "Building debug binary..."
     nimble build
-    @echo "Debug build complete: bin/yabb"
+    @echo "Debug build: bin/yabb (glibc, debug symbols, assertions, checks)"
 
-# Build release binary (optimised)
-build-release:
+# Build release binary (production deployment)
+release: && _clean-cache
     @echo "Building release binary..."
-    nimble build -d:release
-    @echo "Release build complete: bin/yabb"
-
-# Build static musl binary (production deployment)
-build-static:
-    @echo "Building static musl binary..."
     nimble release
-    @echo "Static build complete: bin/yabb"
+    @echo "Release build: bin/yabb (musl static, optimised, stripped)"
 
-# Build with debug symbols for LLDB debugging
-build-debug:
-    @echo "Building with debug symbols..."
-    nim c -g --debugger:native -o:bin/yabb src/yabb.nim
-    @echo "Debug symbols build complete: bin/yabb"
-
-# Rebuild from scratch
+# Rebuild debug from scratch
 rebuild: clean build
     @echo "Rebuild complete"
 
@@ -223,13 +211,22 @@ docs-open: docs
 # CLEANUP
 # =============================================================================
 
-# Clean build artifacts
+# Clean intermediate build cache (preserves binaries)
+_clean-cache:
+    @rm -rf nimcache/
+    @rm -f testresults.html
+    @rm -f outputGotten.txt
+    @rm -f tests/megatest tests/megatest.nim
+
+# Clean all build artifacts including binaries
 clean:
     @echo "Cleaning build artifacts..."
     rm -rf bin/yabb bin/*.exe
     rm -rf nimcache/
     rm -rf htmldocs/
-    rm -rf testresults.html
+    rm -f testresults.html
+    rm -f outputGotten.txt
+    rm -f tests/megatest tests/megatest.nim
     @echo "Clean complete"
 
 # Deep clean (includes nimble cache)
@@ -286,17 +283,8 @@ watch-test:
     @find src/ tests/ -name '*.nim' | entr -c just test
 
 # =============================================================================
-# RELEASE
+# BINARY INFO
 # =============================================================================
-
-# Prepare for release (full checks + static build)
-release: ci build-static
-    @echo ""
-    @echo "============================================"
-    @echo "Release build ready: bin/yabb"
-    @file bin/yabb
-    @ls -lh bin/yabb
-    @echo "============================================"
 
 # Show binary info
 binary-info:

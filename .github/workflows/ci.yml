@@ -69,6 +69,11 @@ jobs:
       - name: Install nph formatter
         run: |
           if ! command -v nph &> /dev/null; then
+            # nph requires Nim compiler internals. Register choosenim's nim source
+            # as a develop package so nph builds against Nim 2.2.6 (not 2.0.8 from registry)
+            cd "$HOME/.choosenim/toolchains/nim-${{ env.NIM_VERSION }}"
+            nimble develop -y
+            cd -
             nimble install -y nph
           else
             echo "nph already installed (from cache)"

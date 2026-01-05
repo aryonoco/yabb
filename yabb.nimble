@@ -1,28 +1,28 @@
 # Package
 
-version       = "0.1.0"
-author        = "yabb"
-description   = "Yet Another BTRFS Backup"
-license       = "MPL 2.0"
-srcDir        = "src"
-binDir        = "bin"
-bin           = @["yabb"]
+version = "0.1.0"
+author = "yabb"
+description = "Yet Another BTRFS Backup"
+license = "MPL 2.0"
+srcDir = "src"
+binDir = "bin"
+bin = @["yabb"]
 
-# Strict type safety (Nim 2.2+)
+# Strict type safety
 # Note: strictCaseObjects and strictFuncs disabled due to external library compatibility
 # (chronicles, faststreams).
 switch("experimental", "strictDefs")
-switch("experimental", "strictNotNil")  # Nil safety tracking
+switch("experimental", "strictNotNil")
 
-# Release build optimizations (same as musl build, but dynamic glibc)
-when defined(release):
-  switch("opt", "speed")
-  switch("mm", "orc")
-  switch("define", "lto")
-  switch("passC", "-march=x86-64-v2")
-  switch("passC", "-mtune=skylake")
-  switch("passC", "-flto")
-  switch("passL", "-flto")
+# Debug build configuration (default via `nimble build`)
+when not defined(release):
+  switch("debugger", "native") # Native debugger support (LLDB/GDB)
+  switch("lineDir", "on") # Include line info for debugging
+  switch("stackTrace", "on") # Stack traces on crash
+  switch("lineTrace", "on") # Line traces on crash
+  switch("assertions", "on") # Enable assertions
+  switch("checks", "on") # Enable runtime checks
+  switch("opt", "none") # No optimisation
 
 # Dependencies
 
@@ -42,24 +42,9 @@ task clean, "Clean build artifacts":
   exec "rm -rf bin/yabb bin/yabb-static nimcache/"
 
 task release, "Build optimized static musl binary (default for deployment)":
-  exec "nim c " &
-       "-d:release " &
-       "--opt:speed " &
-       "--mm:orc " &
-       "-d:lto " &
-       "--passC:-march=x86-64-v2 " &
-       "--passC:-mtune=skylake " &
-       "--passC:-flto " &
-       "--gcc.exe:musl-gcc " &
-       "--gcc.linkerexe:musl-gcc " &
-       "--passL:-static " &
-       "--passL:-flto " &
-       "-o:bin/yabb " &
-       "src/yabb.nim"
+  exec "nim c " & "-d:release " & "--opt:speed " & "--mm:orc " & "-d:lto " &
+    "--passC:-march=x86-64-v2 " & "--passC:-mtune=skylake " & "--passC:-flto " &
+    "--gcc.exe:musl-gcc " & "--gcc.linkerexe:musl-gcc " & "--passL:-static " &
+    "--passL:-flto " & "-o:bin/yabb " & "src/yabb.nim"
   exec "strip -s bin/yabb"
   echo "Built: bin/yabb (static musl)"
-
-task glibc, "Build optimized dynamic glibc binary (for debugging)":
-  exec "nimble build -d:release"
-  exec "strip -s bin/yabb"
-  echo "Built: bin/yabb (dynamic glibc)"
