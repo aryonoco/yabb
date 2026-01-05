@@ -1,6 +1,6 @@
 # =============================================================================
 # YABB Release Workflow
-# Builds static musl binary and creates GitHub Release on v* tags
+# Builds static musl binaries for x86_64 and ARM64, creates GitHub Release
 # =============================================================================
 
 name: Release
@@ -14,9 +14,18 @@ permissions:
   contents: write
 
 jobs:
-  release:
-    name: Build and Release
-    runs-on: ubuntu-latest
+  build:
+    name: Build ${{ matrix.arch }}
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      matrix:
+        include:
+          - arch: x86_64
+            runner: ubuntu-latest
+            nimble_task: release
+          - arch: arm64
+            runner: ubuntu-24.04-arm
+            nimble_task: releaseArm64
 
     steps:
       - name: Checkout code
@@ -43,10 +52,10 @@ jobs:
             ~/.choosenim
             ~/.nimble/bin
             ~/.nimble/pkgs2
-          key: nim-${{ runner.os }}-${{ env.NIM_VERSION }}-${{ hashFiles('*.nimble') }}
+          key: nim-${{ matrix.arch }}-${{ env.NIM_VERSION }}-${{ hashFiles('*.nimble') }}
           restore-keys: |
-            nim-${{ runner.os }}-${{ env.NIM_VERSION }}-
-            nim-${{ runner.os }}-
+            nim-${{ matrix.arch }}-${{ env.NIM_VERSION }}-
+            nim-${{ matrix.arch }}-
 
       - name: Install choosenim and Nim
         if: steps.nim-cache.outputs.cache-hit != 'true'
@@ -76,7 +85,7 @@ jobs:
           nimble setup
 
       - name: Build static binary
-        run: nimble release
+        run: nimble ${{ matrix.nimble_task }}
 
       - name: Verify binary is static
         run: |
@@ -99,7 +108,7 @@ jobs:
         run: |
           # Extract version without 'v' prefix
           VERSION="${GITHUB_REF_NAME#v}"
-          ARCHIVE_NAME="yabb-${VERSION}-linux-x86_64"
+          ARCHIVE_NAME="yabb-${VERSION}-linux-${{ matrix.arch }}"
           mkdir -p "${ARCHIVE_NAME}"
 
           # Copy binary
@@ -127,10 +136,38 @@ jobs:
           # Output for subsequent steps
           echo "ARCHIVE_NAME=${ARCHIVE_NAME}" >> $GITHUB_ENV
 
+      - name: Upload build artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ env.ARCHIVE_NAME }}
+          path: ${{ env.ARCHIVE_NAME }}.tar.gz
+          retention-days: 1
+
+  release:
+    name: Create Release
+    needs: build
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+          merge-multiple: true
+
+      - name: Generate checksums
+        run: |
+          cd artifacts
+          sha256sum *.tar.gz > SHA256SUMS
+          echo "Generated checksums:"
+          cat SHA256SUMS
+
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
-          files: ${{ env.ARCHIVE_NAME }}.tar.gz
+          files: |
+            artifacts/*.tar.gz
+            artifacts/SHA256SUMS
           generate_release_notes: true
           draft: false
           prerelease: ${{ contains(github.ref_name, '-') }}
