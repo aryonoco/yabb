@@ -14,14 +14,14 @@
 import std/[posix, os, times]
 import ../wrappers/log
 import ../types
-import ../errors  # lockError, lockHeldError
+import ../errors # lockError, lockHeldError
 
 type
   # Immutable lock type specification
   LockType* = enum
-    ltRead    # F_RDLCK
-    ltWrite   # F_WRLCK
-    ltUnlock  # F_UNLCK
+    ltRead # F_RDLCK
+    ltWrite # F_WRLCK
+    ltUnlock # F_UNLCK
 
   FlockSpec* = object
     ## Immutable specification for a file lock
@@ -53,10 +53,14 @@ proc toTflock(spec: FlockSpec): Tflock =
   ## Convert immutable FlockSpec to mutable Tflock for FFI
   ## Mutation is contained within this procedure
   var fl: Tflock
-  fl.l_type = case spec.lockType
-    of ltRead: cshort(F_RDLCK)
-    of ltWrite: cshort(F_WRLCK)
-    of ltUnlock: cshort(F_UNLCK)
+  fl.l_type =
+    case spec.lockType
+    of ltRead:
+      cshort(F_RDLCK)
+    of ltWrite:
+      cshort(F_WRLCK)
+    of ltUnlock:
+      cshort(F_UNLCK)
   fl.l_whence = cshort(spec.whence)
   fl.l_start = spec.start
   fl.l_len = spec.length
@@ -78,11 +82,15 @@ proc checkLockStatus(fd: cint, spec: FlockSpec): bool =
     return fl.l_type != cshort(F_UNLCK)
   false
 
-proc tryAcquireLockImpl(fd: cint, lockSpec: FlockSpec, deadline: float, path: string, timeout: int): YabbResult[FileLock] =
+proc tryAcquireLockImpl(
+    fd: cint, lockSpec: FlockSpec, deadline: float, path: string, timeout: int
+): YabbResult[FileLock] =
   ## Internal tail-recursive implementation for lock acquisition with timeout
   if epochTime() >= deadline:
     discard close(fd)
-    return err(lockHeldError("Another instance is running (lock held after " & $timeout & "s)"))
+    return err(
+      lockHeldError("Another instance is running (lock held after " & $timeout & "s)")
+    )
   if applyLock(fd, lockSpec, blocking = false):
     # Write PID to lock file
     discard ftruncate(fd, 0)
@@ -118,7 +126,7 @@ proc release*(lock: sink FileLock) =
     try:
       removeFile(lock.path)
     except OSError:
-      discard  # Ignore removal errors
+      discard # Ignore removal errors
     debug "Lock released", path = lock.path
   # Lock value is consumed - no mutation needed
 
@@ -130,7 +138,8 @@ proc isLocked*(path: string): bool =
   let fd = open(path.cstring, O_RDONLY, 0)
   if fd < 0:
     return false
-  defer: discard close(fd)
+  defer:
+    discard close(fd)
 
   # Use immutable FlockSpec - mutation is contained in checkLockStatus
   checkLockStatus(fd, writeLockSpec())

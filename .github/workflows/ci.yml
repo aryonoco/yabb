@@ -1,0 +1,58 @@
+# =============================================================================
+# YABB CI Workflow
+# Runs format check, lint, and tests on every push and PR
+# =============================================================================
+
+name: CI
+
+on:
+  push:
+    branches: ["**"]
+  pull_request:
+    branches: [main]
+
+jobs:
+  ci:
+    name: Format, Lint, Test
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Load versions from versions.env
+        run: |
+          # Source versions.env and export to GitHub Actions environment
+          if [ -f versions.env ]; then
+            source versions.env
+            echo "NIM_VERSION=$NIM_VERSION" >> $GITHUB_ENV
+            echo "CHOOSENIM_VERSION=$CHOOSENIM_VERSION" >> $GITHUB_ENV
+            echo "Loaded versions: NIM=$NIM_VERSION, CHOOSENIM=$CHOOSENIM_VERSION"
+          else
+            echo "ERROR: versions.env not found"
+            exit 1
+          fi
+
+      - name: Setup Nim ${{ env.NIM_VERSION }}
+        uses: jiro4989/setup-nim-action@v2
+        with:
+          nim-version: ${{ env.NIM_VERSION }}
+          repo-token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Install just
+        uses: extractions/setup-just@v2
+
+      - name: Install nph formatter
+        run: nimble install -y nph
+
+      - name: Install project dependencies
+        run: nimble install -d --accept
+
+      - name: Check formatting
+        run: just fmt-check
+
+      - name: Lint
+        run: just lint
+
+      - name: Run tests
+        run: just test

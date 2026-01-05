@@ -1,0 +1,9 @@
+# nph configuration for yabb project
+# See: https://arnetheduck.github.io/nph/
+
+# Exclude directories from formatting (regex patterns)
+extend-exclude = [
+  "nimcache",
+  "bin",
+  "\\.nimble"
+]

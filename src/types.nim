@@ -15,30 +15,30 @@
 
 import std/[times, strutils]
 import results
-export results  # Re-export for Opt[T] usage
+export results # Re-export for Opt[T] usage
 
 type
   # =============================================================================
   # Range types for compile-time validation
   # =============================================================================
-  Percentage* = range[0..100]  ## Constrained percentage value (0-100)
+  Percentage* = range[0 .. 100] ## Constrained percentage value (0-100)
 
   # Chain constraints
-  ChainLength* = range[1..1000]     ## Maximum snapshots in a chain
-  ChainPosition* = range[0..999]    ## Position within a chain (0-indexed)
+  ChainLength* = range[1 .. 1000] ## Maximum snapshots in a chain
+  ChainPosition* = range[0 .. 999] ## Position within a chain (0-indexed)
 
   # Retry constraints
-  RetryCount* = range[1..100]       ## Number of retry attempts
-  RetryDelaySeconds* = range[0..3600] ## Delay between retries in seconds
+  RetryCount* = range[1 .. 100] ## Number of retry attempts
+  RetryDelaySeconds* = range[0 .. 3600] ## Delay between retries in seconds
 
   # =============================================================================
   # Distinct types for type safety (newtype pattern)
   # =============================================================================
 
   # File system paths - prevent mixing source/dest/config paths
-  SourcePath* = distinct string       ## Source directory path for backups
-  DestPath* = distinct string         ## Destination directory path for backups
-  SnapshotDirPath* = distinct string  ## Snapshot directory within dest
+  SourcePath* = distinct string ## Source directory path for backups
+  DestPath* = distinct string ## Destination directory path for backups
+  SnapshotDirPath* = distinct string ## Snapshot directory within dest
 
 # =============================================================================
 # Borrowing for string-based distinct types
@@ -62,10 +62,10 @@ type
     ecInvalidVar = 5
     ecPrereqMissing = 6
     ecDirInvalid = 7
-    ecLockHeld = 8      # Lock held by another instance (not an error, exit 0 in CLI)
-    ecLockError = 9     # Lock file I/O error (permission denied, etc.)
+    ecLockHeld = 8 # Lock held by another instance (not an error, exit 0 in CLI)
+    ecLockError = 9 # Lock file I/O error (permission denied, etc.)
     ecDeviceErrors = 10 # BTRFS device has errors
-    ecShutdown = 11     # Clean shutdown via signal (SIGTERM, SIGINT, etc.)
+    ecShutdown = 11 # Clean shutdown via signal (SIGTERM, SIGINT, etc.)
 
   CompressionAlgo* = enum
     caZstd = "zstd"
@@ -73,14 +73,14 @@ type
     caLzo = "lzo"
 
   # Algorithm-specific level ranges (compile-time safety)
-  ZstdLevel* = range[1..15]   ## zstd compression level (1-15)
-  ZlibLevel* = range[1..9]    ## zlib compression level (1-9)
-  LzoLevel* = range[1..9]     ## lzo compression level (1-9)
+  ZstdLevel* = range[1 .. 15] ## zstd compression level (1-15)
+  ZlibLevel* = range[1 .. 9] ## zlib compression level (1-9)
+  LzoLevel* = range[1 .. 9] ## lzo compression level (1-9)
 
   # Legacy type alias for compatibility
   CompressionLevel* = object
     algo*: CompressionAlgo
-    level*: range[1..15]
+    level*: range[1 .. 15]
 
   SnapshotType* = enum
     stFull = "full"
@@ -91,7 +91,7 @@ type
     name*: string
     timestamp*: DateTime
     snapshotType*: SnapshotType
-    parent*: Opt[string]  # Use Opt[T] from nim-results for consistency
+    parent*: Opt[string] # Use Opt[T] from nim-results for consistency
     uuid*: string
     verified*: bool
 
@@ -103,29 +103,29 @@ type
     yearly*: Natural
 
   OptimizationConfig* = object
-    enabled*: bool              ## Enable auto-optimization after retention
-    balanceThreshold*: Percentage  ## Usage percent threshold for balance
-    defragThreshold*: Percentage   ## Fragmentation percent threshold
+    enabled*: bool ## Enable auto-optimization after retention
+    balanceThreshold*: Percentage ## Usage percent threshold for balance
+    defragThreshold*: Percentage ## Fragmentation percent threshold
 
   ChainConfig* = object
-    maxLength*: Natural     # Maximum chain length before forcing full snapshot
+    maxLength*: Natural # Maximum chain length before forcing full snapshot
 
   YabbConfig* = object
     srcDir*: SourcePath
     dstDir*: DestPath
     snapshotDir*: SnapshotDirPath
     compression*: CompressionLevel
-    compress*: bool  # Whether to use --compressed-data on btrfs send (default: true)
+    compress*: bool # Whether to use --compressed-data on btrfs send (default: true)
     retention*: RetentionPolicy
     optimization*: OptimizationConfig
     chain*: ChainConfig
     debug*: bool
     dryRun*: bool
     forceFull*: bool
-    minFreeSpace*: Natural  # MB
+    minFreeSpace*: Natural # MB
     maxParallelJobs*: Positive
     retryCount*: Positive
-    retryDelay*: Natural    # seconds
+    retryDelay*: Natural # seconds
 
   YabbError* = object
     ## Error type for YABB operations - used with Result[T, YabbError]
@@ -142,31 +142,28 @@ type
     warnings*: int
     snapshotsCreated*: int
     snapshotsDeleted*: int
-    startTime*: float       ## Unix epoch timestamp when execution started
+    startTime*: float ## Unix epoch timestamp when execution started
     operations*: seq[string] ## List of operations performed
 
   # Configuration validation types - pure functional approach
-  ConfigWarning* = object
-    ## Immutable warning from config validation
+  ConfigWarning* = object ## Immutable warning from config validation
     field*: string
     message*: string
 
-  ConfigValidationResult* = object
-    ## Immutable result of config dependency validation
+  ConfigValidationResult* = object ## Immutable result of config dependency validation
     warnings*: seq[ConfigWarning]
 
   # =============================================================================
   # Object Variants for Pattern Matching (ADTs / Sum Types)
   # =============================================================================
-
   ParentValidationState* = enum
     ## Represents the validation state of a snapshot's parent reference.
     ## Used with fusion/matching for exhaustive pattern matching.
-    pvsNoParentRef       ## Incremental has no parent defined
+    pvsNoParentRef ## Incremental has no parent defined
     pvsMissingParentPath ## Parent defined but path doesn't exist
-    pvsValidParent       ## Parent exists and is accessible
-    pvsFullSnapshot      ## Full snapshot, no parent needed
-    pvsMetadataError     ## Could not read metadata
+    pvsValidParent ## Parent exists and is accessible
+    pvsFullSnapshot ## Full snapshot, no parent needed
+    pvsMetadataError ## Could not read metadata
 
   ParsedUsageLineKind* = enum
     ## Kind of btrfs filesystem usage output line
@@ -192,60 +189,84 @@ type
 # ExecutionStats functional operations
 func initStats*(startTime: float = 0.0): ExecutionStats =
   ExecutionStats(
-    errors: 0, warnings: 0,
-    snapshotsCreated: 0, snapshotsDeleted: 0,
-    startTime: startTime, operations: @[]
+    errors: 0,
+    warnings: 0,
+    snapshotsCreated: 0,
+    snapshotsDeleted: 0,
+    startTime: startTime,
+    operations: @[],
   )
 
 func withError*(s: ExecutionStats): ExecutionStats =
   ExecutionStats(
-    errors: s.errors + 1, warnings: s.warnings,
-    snapshotsCreated: s.snapshotsCreated, snapshotsDeleted: s.snapshotsDeleted,
-    startTime: s.startTime, operations: s.operations
+    errors: s.errors + 1,
+    warnings: s.warnings,
+    snapshotsCreated: s.snapshotsCreated,
+    snapshotsDeleted: s.snapshotsDeleted,
+    startTime: s.startTime,
+    operations: s.operations,
   )
 
 func withWarning*(s: ExecutionStats): ExecutionStats =
   ExecutionStats(
-    errors: s.errors, warnings: s.warnings + 1,
-    snapshotsCreated: s.snapshotsCreated, snapshotsDeleted: s.snapshotsDeleted,
-    startTime: s.startTime, operations: s.operations
+    errors: s.errors,
+    warnings: s.warnings + 1,
+    snapshotsCreated: s.snapshotsCreated,
+    snapshotsDeleted: s.snapshotsDeleted,
+    startTime: s.startTime,
+    operations: s.operations,
   )
 
 func withSnapshotCreated*(s: ExecutionStats): ExecutionStats =
   ExecutionStats(
-    errors: s.errors, warnings: s.warnings,
-    snapshotsCreated: s.snapshotsCreated + 1, snapshotsDeleted: s.snapshotsDeleted,
-    startTime: s.startTime, operations: s.operations
+    errors: s.errors,
+    warnings: s.warnings,
+    snapshotsCreated: s.snapshotsCreated + 1,
+    snapshotsDeleted: s.snapshotsDeleted,
+    startTime: s.startTime,
+    operations: s.operations,
   )
 
 func withSnapshotsDeleted*(s: ExecutionStats, count: int): ExecutionStats =
   ExecutionStats(
-    errors: s.errors, warnings: s.warnings,
-    snapshotsCreated: s.snapshotsCreated, snapshotsDeleted: s.snapshotsDeleted + count,
-    startTime: s.startTime, operations: s.operations
+    errors: s.errors,
+    warnings: s.warnings,
+    snapshotsCreated: s.snapshotsCreated,
+    snapshotsDeleted: s.snapshotsDeleted + count,
+    startTime: s.startTime,
+    operations: s.operations,
   )
 
 func withOperation*(s: ExecutionStats, op: string): ExecutionStats =
   ExecutionStats(
-    errors: s.errors, warnings: s.warnings,
-    snapshotsCreated: s.snapshotsCreated, snapshotsDeleted: s.snapshotsDeleted,
-    startTime: s.startTime, operations: s.operations & @[op]
+    errors: s.errors,
+    warnings: s.warnings,
+    snapshotsCreated: s.snapshotsCreated,
+    snapshotsDeleted: s.snapshotsDeleted,
+    startTime: s.startTime,
+    operations: s.operations & @[op],
   )
 
 func combine*(a, b: ExecutionStats): ExecutionStats =
   ExecutionStats(
-    errors: a.errors + b.errors, warnings: a.warnings + b.warnings,
+    errors: a.errors + b.errors,
+    warnings: a.warnings + b.warnings,
     snapshotsCreated: a.snapshotsCreated + b.snapshotsCreated,
     snapshotsDeleted: a.snapshotsDeleted + b.snapshotsDeleted,
-    startTime: a.startTime, operations: a.operations & b.operations
+    startTime: a.startTime,
+    operations: a.operations & b.operations,
   )
 
 # ConfigValidationResult functional operations
 func initValidationResult*(): ConfigValidationResult =
   ConfigValidationResult(warnings: @[])
 
-func withWarning*(r: ConfigValidationResult, field, message: string): ConfigValidationResult =
-  ConfigValidationResult(warnings: r.warnings & @[ConfigWarning(field: field, message: message)])
+func withWarning*(
+    r: ConfigValidationResult, field, message: string
+): ConfigValidationResult =
+  ConfigValidationResult(
+    warnings: r.warnings & @[ConfigWarning(field: field, message: message)]
+  )
 
 func hasWarnings*(r: ConfigValidationResult): bool =
   r.warnings.len > 0
@@ -264,19 +285,52 @@ func parseBtrfsUsageLine*(line: string): ParsedUsageLine =
   let parts = trimmed.split()
 
   if trimmed.startsWith("Device size:") and parts.len >= 3:
-    ParsedUsageLine(kind: pulDeviceSize, bytes: (try: parseBiggestInt(parts[2]) except ValueError: 0'i64))
+    ParsedUsageLine(
+      kind: pulDeviceSize,
+      bytes: (
+        try:
+          parseBiggestInt(parts[2])
+        except ValueError:
+          0'i64
+      ),
+    )
   elif trimmed.startsWith("Used:") and parts.len >= 2:
-    ParsedUsageLine(kind: pulUsed, usedBytes: (try: parseBiggestInt(parts[1]) except ValueError: 0'i64))
+    ParsedUsageLine(
+      kind: pulUsed,
+      usedBytes: (
+        try:
+          parseBiggestInt(parts[1])
+        except ValueError:
+          0'i64
+      ),
+    )
   elif trimmed.startsWith("Device unallocated:") and parts.len >= 3:
-    ParsedUsageLine(kind: pulDeviceUnallocated, bytes: (try: parseBiggestInt(parts[2]) except ValueError: 0'i64))
+    ParsedUsageLine(
+      kind: pulDeviceUnallocated,
+      bytes: (
+        try:
+          parseBiggestInt(parts[2])
+        except ValueError:
+          0'i64
+      ),
+    )
   elif trimmed.startsWith("Free (estimated):") and parts.len >= 3:
-    ParsedUsageLine(kind: pulFreeEstimated, bytes: (try: parseBiggestInt(parts[2]) except ValueError: 0'i64))
+    ParsedUsageLine(
+      kind: pulFreeEstimated,
+      bytes: (
+        try:
+          parseBiggestInt(parts[2])
+        except ValueError:
+          0'i64
+      ),
+    )
   else:
     ParsedUsageLine(kind: pulUnknown)
 
 # Constants
 const
   DefaultConfigPath* = "/etc/yabb.toml"
+  UserConfigPath* = "~/.config/yabb/yabb.toml" ## XDG-compliant user config location
   LockFile* = "/var/run/yabb.lock"
   LastSnapshotFile* = "/var/run/yabb_last_snapshot"
   TempSendPrefix* = "yabb-send"
@@ -285,8 +339,8 @@ const
 
   # Optimization defaults
   DefaultAutoOptimize* = true
-  DefaultBalanceThreshold*: Percentage = 75  ## Percent usage
-  DefaultDefragThreshold*: Percentage = 50   ## Percent fragmentation
+  DefaultBalanceThreshold*: Percentage = 75 ## Percent usage
+  DefaultDefragThreshold*: Percentage = 50 ## Percent fragmentation
 
   # Chain defaults
   DefaultMaxChainLength* = 10

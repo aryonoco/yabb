@@ -15,12 +15,11 @@ import ../types
 import ../errors
 import ../utils/process
 
-type
-  StorageEfficiency* = object
-    usagePercent*: Percentage    ## 0-100
-    fragPercent*: Percentage     ## 0-100 (estimated)
-    usedBytes*: int64
-    totalBytes*: int64
+type StorageEfficiency* = object
+  usagePercent*: Percentage ## 0-100
+  fragPercent*: Percentage ## 0-100 (estimated)
+  usedBytes*: int64
+  totalBytes*: int64
 
 {.push raises: [].}
 
@@ -59,13 +58,19 @@ proc checkFilesystemSpace*(path: string, minFreeSpaceMB: Natural): YabbResult[vo
     return err(prereqError("Unexpected df output format"))
 
   let availStr = lines[1].strip().replace("M", "")
-  let availMB = try: parseInt(availStr) except ValueError: 0
+  let availMB =
+    try:
+      parseInt(availStr)
+    except ValueError:
+      0
 
   if availMB < minFreeSpaceMB:
-    return err(prereqError(
-      "Insufficient free space on " & path & ": " & $availMB & "MB available, " &
-      $minFreeSpaceMB & "MB required"
-    ))
+    return err(
+      prereqError(
+        "Insufficient free space on " & path & ": " & $availMB & "MB available, " &
+          $minFreeSpaceMB & "MB required"
+      )
+    )
 
   debug "Filesystem space check passed",
     path = path, available = availMB, required = minFreeSpaceMB
@@ -93,9 +98,11 @@ proc balance*(path: string, dryRun: bool = false): YabbResult[void] =
     return ok()
 
   info "Starting balance (this may take a while)", path = path
-  let res = runCommand("btrfs",
+  let res = runCommand(
+    "btrfs",
     ["balance", "start", "-dusage=5,limit=2", "-musage=5,limit=4", path],
-    timeout = LongOperationTimeout)
+    timeout = LongOperationTimeout,
+  )
   if res.isErr:
     return err(res.error)
   if res.value.exitCode != 0:
@@ -119,8 +126,8 @@ proc scrub*(path: string, dryRun: bool = false): YabbResult[void] =
     return ok()
 
   info "Starting scrub (this may take a while)", path = path
-  let res = runCommand("btrfs", ["scrub", "start", "-B", path],
-                       timeout = LongOperationTimeout)
+  let res =
+    runCommand("btrfs", ["scrub", "start", "-B", path], timeout = LongOperationTimeout)
   if res.isErr:
     return err(res.error)
   if res.value.exitCode != 0:
@@ -150,16 +157,22 @@ proc hasErrors*(path: string): YabbResult[bool] =
     return err(statsRes.error)
 
   # Check for non-zero error counts in output using anyIt
-  let hasNonZeroErrors = statsRes.value.splitLines().anyIt(block:
-    if "errors" in it.toLowerAscii:
-      let parts = it.split()
-      if parts.len >= 2:
-        (try: parseInt(parts[^1]) except ValueError: 0) > 0
-      else:
-        false
-    else:
-      false
-  )
+  let hasNonZeroErrors = statsRes.value.splitLines().anyIt(
+      block:
+        if "errors" in it.toLowerAscii:
+          let parts = it.split()
+          if parts.len >= 2:
+            (
+              try:
+                parseInt(parts[^1])
+              except ValueError:
+                0
+            ) > 0
+          else:
+            false
+        else:
+          false
+    )
   ok(hasNonZeroErrors)
 
 proc getStorageEfficiency*(path: string): YabbResult[StorageEfficiency] =
@@ -171,50 +184,53 @@ proc getStorageEfficiency*(path: string): YabbResult[StorageEfficiency] =
 
   # Parse filesystem usage using fold with pattern matching on ParsedUsageLine
   let (used, total, unallocated) = res.value.output.splitLines().foldl(
-    block:
-      let parsed = parseBtrfsUsageLine(b)
-      case parsed.kind
-      of pulDeviceSize:
-        (a[0], parsed.bytes, a[2])
-      of pulUsed:
-        (parsed.usedBytes, a[1], a[2])
-      of pulDeviceUnallocated:
-        (a[0], a[1], parsed.bytes)
-      of pulFreeEstimated:
-        a  # Not used in this function
-      of pulUnknown:
-        a
-    , (0'i64, 0'i64, 0'i64))
+      block:
+        let parsed = parseBtrfsUsageLine(b)
+        case parsed.kind
+        of pulDeviceSize:
+          (a[0], parsed.bytes, a[2])
+        of pulUsed:
+          (parsed.usedBytes, a[1], a[2])
+        of pulDeviceUnallocated:
+          (a[0], a[1], parsed.bytes)
+        of pulFreeEstimated:
+          a # Not used in this function
+        of pulUnknown:
+          a,
+      (0'i64, 0'i64, 0'i64),
+    )
 
   # Calculate usage percentage (clamped to 0-100 for Percentage type)
-  let usagePercent: Percentage = if total > 0:
-    Percentage(min(100, (used * 100) div total))
-  else:
-    0
+  let usagePercent: Percentage =
+    if total > 0:
+      Percentage(min(100, (used * 100) div total))
+    else:
+      0
 
   # Estimate fragmentation from allocation vs used ratio
   # This is a rough estimate - btrfs doesn't expose exact fragmentation
   let allocated = total - unallocated
-  let fragPercent: Percentage = if allocated > 0 and used > 0:
-    let efficiency = (used * 100) div allocated
-    Percentage(max(0, min(100, 100 - efficiency)))
-  else:
-    0
+  let fragPercent: Percentage =
+    if allocated > 0 and used > 0:
+      let efficiency = (used * 100) div allocated
+      Percentage(max(0, min(100, 100 - efficiency)))
+    else:
+      0
 
   debug "Storage efficiency measured",
     path = path, usagePercent = usagePercent, fragPercent = fragPercent
 
-  ok(StorageEfficiency(
-    usagePercent: usagePercent,
-    fragPercent: fragPercent,
-    usedBytes: used,
-    totalBytes: total
-  ))
+  ok(
+    StorageEfficiency(
+      usagePercent: usagePercent,
+      fragPercent: fragPercent,
+      usedBytes: used,
+      totalBytes: total,
+    )
+  )
 
 proc checkStorageEfficiency*(
-  path: string,
-  balanceThreshold: Percentage,
-  defragThreshold: Percentage
+    path: string, balanceThreshold: Percentage, defragThreshold: Percentage
 ): YabbResult[tuple[needsBalance, needsDefrag: bool]] =
   ## Check if storage optimization is needed based on thresholds
   ## Returns which operations are recommended
@@ -233,10 +249,7 @@ proc checkStorageEfficiency*(
 
   ok((needsBalance: needsBalance, needsDefrag: needsDefrag))
 
-proc optimizeStorage*(
-  path: string,
-  config: YabbConfig
-): YabbResult[void] =
+proc optimizeStorage*(path: string, config: YabbConfig): YabbResult[void] =
   ## Combined storage optimization workflow
   ## Runs defrag and balance based on efficiency thresholds
   if config.dryRun:
@@ -245,9 +258,7 @@ proc optimizeStorage*(
 
   # Check if optimization is needed
   let check = checkStorageEfficiency(
-    path,
-    config.optimization.balanceThreshold,
-    config.optimization.defragThreshold
+    path, config.optimization.balanceThreshold, config.optimization.defragThreshold
   ).valueOr:
     return err(error)
 
@@ -258,9 +269,11 @@ proc optimizeStorage*(
   # Run defrag if needed (with compression)
   if check.needsDefrag:
     info "Running defragmentation with compression", path = path
-    let defragRes = runCommand("btrfs",
+    let defragRes = runCommand(
+      "btrfs",
       ["filesystem", "defragment", "-r", "-czstd", path],
-      timeout = LongOperationTimeout)
+      timeout = LongOperationTimeout,
+    )
     if defragRes.isErr or defragRes.value.exitCode != 0:
       warn "Defragmentation failed", path = path
       # Non-fatal, continue with balance
@@ -269,9 +282,11 @@ proc optimizeStorage*(
   # Uses -dusage=5,limit=2 -musage=5,limit=4 to balance only nearly-empty chunks
   if check.needsBalance:
     info "Running balance operation", path = path
-    let balanceRes = runCommand("btrfs",
+    let balanceRes = runCommand(
+      "btrfs",
       ["balance", "start", "-dusage=5,limit=2", "-musage=5,limit=4", path],
-      timeout = LongOperationTimeout)
+      timeout = LongOperationTimeout,
+    )
     if balanceRes.isErr or balanceRes.value.exitCode != 0:
       warn "Balance failed", path = path
       # Non-fatal

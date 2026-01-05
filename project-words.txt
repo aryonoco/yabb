@@ -1,0 +1,97 @@
+# Nim Language
+nim
+nimble
+nimlangserver
+nimpretty
+nph
+nimcache
+nimsuggest
+nimscript
+cligen
+parsetoml
+chronicles
+uuids
+
+# Nim Keywords & Patterns
+func
+proc
+ufcs
+UFCS
+foldl
+filterIt
+mapIt
+isSome
+isNone
+isOk
+isErr
+valueOr
+withOverrides
+checkShutdown
+
+# BTRFS / Storage
+btrfs
+BTRFS
+subvolume
+subvolumes
+scrub
+scrubbing
+defrag
+defragment
+defragmentation
+zstd
+ZSTD
+lzo
+LZO
+zlib
+ZLIB
+
+# Project-Specific
+yabb
+YABB
+snapdir
+srcdir
+dstdir
+chainlen
+
+# Technical Terms
+journald
+systemd
+SIGTERM
+SIGINT
+musl
+statically
+stdout
+stderr
+
+# British English Variants
+serialisation
+serialise
+deserialisation
+deserialise
+normalised
+denormalised
+materialisation
+materialise
+behaviour
+colour
+honour
+
+# DevOps & Tools
+devcontainer
+devcontainers
+healthcheck
+pre-commit
+trivy
+lldb
+LLDB
+codelldb
+
+# VS Code Extensions (author names)
+eamodio
+usernamehw
+errorlens
+timonwong
+foxundermoon
+arnetheduck
+vadimcn
+tamasfe

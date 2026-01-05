@@ -17,14 +17,14 @@ import ../types
 import ../errors
 import shutdown
 
-const MaxRetryDelay = 300  # 5 minutes max
+const MaxRetryDelay = 300 # 5 minutes max
 
 proc retryImpl[T](
-  attempt: int,
-  delay: Natural,
-  maxAttempts: Positive,
-  operation: proc(): YabbResult[T] {.closure, raises: [].},
-  description: string
+    attempt: int,
+    delay: Natural,
+    maxAttempts: Positive,
+    operation: proc(): YabbResult[T] {.closure, raises: [].},
+    description: string,
 ): YabbResult[T] =
   ## Internal tail-recursive implementation of retry
   ## Checks for shutdown before each attempt and after sleep
@@ -47,8 +47,10 @@ proc retryImpl[T](
     return res
 
   warn "Operation failed, retrying",
-    attempt = attempt, maxAttempts = maxAttempts,
-    delay = delay, description = description
+    attempt = attempt,
+    maxAttempts = maxAttempts,
+    delay = delay,
+    description = description
 
   sleep(delay * 1000)
 
@@ -61,10 +63,10 @@ proc retryImpl[T](
   retryImpl(attempt + 1, nextDelay, maxAttempts, operation, description)
 
 proc retry*[T](
-  maxAttempts: Positive,
-  initialDelay: Natural,
-  operation: proc(): YabbResult[T] {.closure, raises: [].},
-  description: string = ""
+    maxAttempts: Positive,
+    initialDelay: Natural,
+    operation: proc(): YabbResult[T] {.closure, raises: [].},
+    description: string = "",
 ): YabbResult[T] =
   ## Retry an operation with exponential backoff
   ## - maxAttempts: Maximum number of retry attempts

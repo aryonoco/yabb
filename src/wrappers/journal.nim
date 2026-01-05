@@ -30,8 +30,7 @@ type
     jpInfo = "info"
     jpDebug = "debug"
 
-  JournalContext* = object
-    ## Immutable journal context - created once at startup
+  JournalContext* = object ## Immutable journal context - created once at startup
     available*: bool
     tag*: string
 
@@ -51,8 +50,14 @@ proc logToJournal*(ctx: JournalContext, message: string, priority: JournalPriori
   if ctx.available:
     # Use echo to pipe through systemd-cat
     # Shell escaping handled by quoteShell
-    discard runCommand("sh", ["-c",
-      "echo " & message.quoteShell & " | systemd-cat -t " & ctx.tag & " -p " & $priority
-    ], timeout = 1000)
+    discard runCommand(
+      "sh",
+      [
+        "-c",
+        "echo " & message.quoteShell & " | systemd-cat -t " & ctx.tag & " -p " &
+          $priority,
+      ],
+      timeout = 1000,
+    )
 
 {.pop.}

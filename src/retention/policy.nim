@@ -15,20 +15,17 @@
 
 import std/[times]
 
-type
-  RetentionPeriod* = enum
-    rpHourly
-    rpDaily
-    rpWeekly
-    rpMonthly
-    rpYearly
+type RetentionPeriod* = enum
+  rpHourly
+  rpDaily
+  rpWeekly
+  rpMonthly
+  rpYearly
 
 {.push raises: [].}
 
 proc getPeriodBoundaries*(
-  period: RetentionPeriod,
-  index: int,
-  referenceTime: DateTime
+    period: RetentionPeriod, index: int, referenceTime: DateTime
 ): tuple[start, stop: DateTime] =
   ## Get start/end times for a retention period
   ## - period: The type of period (hourly, daily, etc.)
@@ -37,25 +34,36 @@ proc getPeriodBoundaries*(
   case period
   of rpHourly:
     let hourStart = referenceTime - initDuration(hours = index + 1)
-    result.start = dateTime(hourStart.year, hourStart.month, hourStart.monthday,
-                            hourStart.hour, 0, 0, zone = utc())
+    result.start = dateTime(
+      hourStart.year,
+      hourStart.month,
+      hourStart.monthday,
+      hourStart.hour,
+      0,
+      0,
+      zone = utc(),
+    )
     result.stop = result.start + initDuration(hours = 1) - initDuration(seconds = 1)
-
   of rpDaily:
     let dayStart = referenceTime - initDuration(days = index + 1)
-    result.start = dateTime(dayStart.year, dayStart.month, dayStart.monthday,
-                            0, 0, 0, zone = utc())
+    result.start =
+      dateTime(dayStart.year, dayStart.month, dayStart.monthday, 0, 0, 0, zone = utc())
     result.stop = result.start + initDuration(days = 1) - initDuration(seconds = 1)
-
   of rpWeekly:
     # Find Monday of target week
     let currentWeekday = referenceTime.weekday.ord
     let mondayOffset = currentWeekday
     let targetMonday = referenceTime - initDuration(days = mondayOffset + (7 * index))
-    result.start = dateTime(targetMonday.year, targetMonday.month, targetMonday.monthday,
-                            0, 0, 0, zone = utc())
+    result.start = dateTime(
+      targetMonday.year,
+      targetMonday.month,
+      targetMonday.monthday,
+      0,
+      0,
+      0,
+      zone = utc(),
+    )
     result.stop = result.start + initDuration(days = 7) - initDuration(seconds = 1)
-
   of rpMonthly:
     # Use direct modular arithmetic instead of while loop
     # Convert to total months from epoch, subtract offset, convert back
@@ -64,10 +72,12 @@ proc getPeriodBoundaries*(
     let month = (totalMonths mod 12) + 1
     result.start = dateTime(year, Month(month), 1, 0, 0, 0, zone = utc())
     # Last day of month
-    let nextMonth = if month == 12: dateTime(year + 1, mJan, 1, 0, 0, 0, zone = utc())
-                    else: dateTime(year, Month(month + 1), 1, 0, 0, 0, zone = utc())
+    let nextMonth =
+      if month == 12:
+        dateTime(year + 1, mJan, 1, 0, 0, 0, zone = utc())
+      else:
+        dateTime(year, Month(month + 1), 1, 0, 0, 0, zone = utc())
     result.stop = nextMonth - initDuration(seconds = 1)
-
   of rpYearly:
     let targetYear = referenceTime.year - index - 1
     result.start = dateTime(targetYear, mJan, 1, 0, 0, 0, zone = utc())

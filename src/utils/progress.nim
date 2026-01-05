@@ -20,16 +20,14 @@ import ../wrappers/log
 # =============================================================================
 
 type
-  SpinnerState* = object
-    ## Immutable spinner state
+  SpinnerState* = object ## Immutable spinner state
     frames*: seq[string]
     current*: int
     message*: string
 
-  WorkflowStep* = object
-    ## A single step in a workflow
-    name*: string         # Step name for logging
-    activeName*: string   # Message shown during step (e.g., "Creating snapshot...")
+  WorkflowStep* = object ## A single step in a workflow
+    name*: string # Step name for logging
+    activeName*: string # Message shown during step (e.g., "Creating snapshot...")
 
   WorkflowProgress* = object
     ## Immutable workflow progress state
@@ -40,7 +38,8 @@ type
     startTime*: float
 
 const
-  SpinnerBraille* = @["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"]
+  SpinnerBraille* =
+    @["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"]
   SpinnerDots* = @["⣾", "⣽", "⣻", "⢿", "⡿", "⣟", "⣯", "⣷"]
   SpinnerLine* = @["-", "\\", "|", "/"]
 
@@ -53,24 +52,27 @@ proc isTTY(): bool =
 
 proc formatEta(seconds: float): string =
   let s = int(seconds)
-  if s < 60: return $s & "s"
-  elif s < 3600: return $(s div 60) & "m" & $(s mod 60) & "s"
-  else: return $(s div 3600) & "h" & $((s mod 3600) div 60) & "m"
+  if s < 60:
+    return $s & "s"
+  elif s < 3600:
+    return $(s div 60) & "m" & $(s mod 60) & "s"
+  else:
+    return $(s div 3600) & "h" & $((s mod 3600) div 60) & "m"
 
 # =============================================================================
 # SpinnerState - Pure Functional API
 # =============================================================================
 
-func newSpinnerState*(message: string, frames: seq[string] = SpinnerBraille): SpinnerState =
+func newSpinnerState*(
+    message: string, frames: seq[string] = SpinnerBraille
+): SpinnerState =
   ## Create a new spinner state
   SpinnerState(frames: frames, current: 0, message: message)
 
 func ticked*(s: SpinnerState): SpinnerState =
   ## Return a new state with the frame advanced
   SpinnerState(
-    frames: s.frames,
-    current: (s.current + 1) mod s.frames.len,
-    message: s.message
+    frames: s.frames, current: (s.current + 1) mod s.frames.len, message: s.message
   )
 
 func withMessage*(s: SpinnerState, message: string): SpinnerState =
@@ -95,8 +97,10 @@ proc render*(s: SpinnerState) =
 proc renderStart*(s: SpinnerState) =
   ## Initialize the spinner display
   if isTTY():
-    try: hideCursor(stdout)
-    except IOError: discard
+    try:
+      hideCursor(stdout)
+    except IOError:
+      discard
   s.render()
 
 proc renderFinish*(s: SpinnerState, success: bool, message: string = "") =
@@ -127,10 +131,7 @@ proc renderFinish*(s: SpinnerState, success: bool, message: string = "") =
 proc newWorkflowProgress*(name: string, steps: seq[WorkflowStep]): WorkflowProgress =
   ## Create a new workflow progress tracker
   WorkflowProgress(
-    operationName: name,
-    steps: steps,
-    currentStep: 0,
-    startTime: epochTime()
+    operationName: name, steps: steps, currentStep: 0, startTime: epochTime()
   )
 
 func atStep*(wp: WorkflowProgress, step: int): WorkflowProgress =
@@ -139,7 +140,7 @@ func atStep*(wp: WorkflowProgress, step: int): WorkflowProgress =
     operationName: wp.operationName,
     steps: wp.steps,
     currentStep: min(max(0, step), wp.steps.len),
-    startTime: wp.startTime
+    startTime: wp.startTime,
   )
 
 func nextStep*(wp: WorkflowProgress): WorkflowProgress =
@@ -151,9 +152,12 @@ proc renderStep*(wp: WorkflowProgress, jsonMode: bool = false) =
   ## Render current step: [3/8] Creating snapshot...
   ## TTY-only: Shows animated progress in interactive terminals
   ## Non-TTY/JSON: Silent (use structured logging instead)
-  if wp.currentStep >= wp.steps.len: return
-  if jsonMode: return  # JSON mode doesn't render progress
-  if not isTTY(): return  # Non-TTY: silent, use structured logging
+  if wp.currentStep >= wp.steps.len:
+    return
+  if jsonMode:
+    return # JSON mode doesn't render progress
+  if not isTTY():
+    return # Non-TTY: silent, use structured logging
 
   let step = wp.steps[wp.currentStep]
   let stepNum = wp.currentStep + 1
@@ -164,12 +168,14 @@ proc renderStep*(wp: WorkflowProgress, jsonMode: bool = false) =
     stdout.styledWrite(fgCyan, "[", $stepNum, "/", $total, "] ")
     stdout.write(step.activeName)
     stdout.flushFile()
-  except IOError: discard
+  except IOError:
+    discard
 
 proc renderComplete*(wp: WorkflowProgress, success: bool, jsonMode: bool = false) =
   ## Render completion: TTY shows colored output, non-TTY uses structured logging
   let elapsed = epochTime() - wp.startTime
-  if jsonMode: return
+  if jsonMode:
+    return
 
   try:
     if isTTY():
@@ -177,17 +183,24 @@ proc renderComplete*(wp: WorkflowProgress, success: bool, jsonMode: bool = false
       stdout.write("\r")
       showCursor(stdout)
       if success:
-        stdout.styledWriteLine(fgGreen, "✓ ", resetStyle,
-          wp.operationName, " completed in ", formatEta(elapsed))
+        stdout.styledWriteLine(
+          fgGreen,
+          "✓ ",
+          resetStyle,
+          wp.operationName,
+          " completed in ",
+          formatEta(elapsed),
+        )
       else:
-        stdout.styledWriteLine(fgRed, "✗ ", resetStyle,
-          wp.operationName, " failed")
+        stdout.styledWriteLine(fgRed, "✗ ", resetStyle, wp.operationName, " failed")
     else:
       # Non-TTY: use structured logging instead of terminal output
       if success:
-        info "Workflow completed", operation = wp.operationName, elapsed = formatEta(elapsed)
+        info "Workflow completed",
+          operation = wp.operationName, elapsed = formatEta(elapsed)
       else:
         error "Workflow failed", operation = wp.operationName
-  except IOError: discard
+  except IOError:
+    discard
 
 {.pop.}

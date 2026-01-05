@@ -43,16 +43,17 @@ proc getFilesystemUsage*(path: string): YabbResult[tuple[used, available: int64]
 
   # Parse output using fold with pattern matching on ParsedUsageLine
   let (used, available) = res.value.output.splitLines().foldl(
-    block:
-      let parsed = parseBtrfsUsageLine(b)
-      case parsed.kind
-      of pulUsed:
-        (parsed.usedBytes, a[1])
-      of pulFreeEstimated:
-        (a[0], parsed.bytes)
-      of pulDeviceSize, pulDeviceUnallocated, pulUnknown:
-        a
-    , (0'i64, 0'i64))
+      block:
+        let parsed = parseBtrfsUsageLine(b)
+        case parsed.kind
+        of pulUsed:
+          (parsed.usedBytes, a[1])
+        of pulFreeEstimated:
+          (a[0], parsed.bytes)
+        of pulDeviceSize, pulDeviceUnallocated, pulUnknown:
+          a,
+      (0'i64, 0'i64),
+    )
 
   ok((used: used, available: available))
 
@@ -81,20 +82,17 @@ proc deleteSubvolume*(path: string, dryRun: bool = false): YabbResult[void] =
   ok()
 
 proc createSnapshot*(
-  source: string,
-  dest: string,
-  readonly: bool = true,
-  dryRun: bool = false
+    source: string, dest: string, readonly: bool = true, dryRun: bool = false
 ): YabbResult[void] =
   ## Create a btrfs snapshot
   if dryRun:
-    debug "DRY_RUN: Would create snapshot", source = source, dest = dest, readonly = readonly
+    debug "DRY_RUN: Would create snapshot",
+      source = source, dest = dest, readonly = readonly
     return ok()
 
   # Use immutable concatenation instead of mutable append
-  let args = @["subvolume", "snapshot"] &
-             (if readonly: @["-r"] else: @[]) &
-             @[source, dest]
+  let args =
+    @["subvolume", "snapshot"] & (if readonly: @["-r"] else: @[]) & @[source, dest]
 
   let res = runCommand("btrfs", args)
   if res.isErr or res.value.exitCode != 0:
@@ -117,7 +115,9 @@ proc isReadonly*(path: string): YabbResult[bool] =
     return err(res.error)
   ok(res.value.output.contains("ro=true"))
 
-proc setReadonly*(path: string, readonly: bool, dryRun: bool = false): YabbResult[void] =
+proc setReadonly*(
+    path: string, readonly: bool, dryRun: bool = false
+): YabbResult[void] =
   ## Set read-only status on subvolume
   if dryRun:
     debug "DRY_RUN: Would set readonly", path = path, readonly = readonly
@@ -129,7 +129,9 @@ proc setReadonly*(path: string, readonly: bool, dryRun: bool = false): YabbResul
     return err(btrfsError("Failed to set readonly=" & value & " on " & path))
   ok()
 
-proc setProperty*(path, property, value: string, dryRun: bool = false): YabbResult[void] =
+proc setProperty*(
+    path, property, value: string, dryRun: bool = false
+): YabbResult[void] =
   ## Set a property on a subvolume
   ## Uses setfattr for user.* extended attributes, btrfs property for native properties
   if dryRun:

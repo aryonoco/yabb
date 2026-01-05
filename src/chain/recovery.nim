@@ -41,56 +41,72 @@ proc diagnoseSnapshot(snap: Snapshot): seq[ChainDiagnostic] =
   # Incomplete snapshots may not have metadata, so check structure first
   let isSubvol = isSubvolume(snap.path)
   if isSubvol.isErr or not isSubvol.value:
-    return @[ChainDiagnostic(
-      path: snap.path,
-      issue: ciInvalidSubvolume,
-      details: "Path is not a valid btrfs subvolume"
-    )]
+    return
+      @[
+        ChainDiagnostic(
+          path: snap.path,
+          issue: ciInvalidSubvolume,
+          details: "Path is not a valid btrfs subvolume",
+        )
+      ]
 
   # Check read-only status (interrupted snapshot creation leaves ro=false)
   let roStatus = isReadonly(snap.path)
   if roStatus.isErr or not roStatus.value:
-    return @[ChainDiagnostic(
-      path: snap.path,
-      issue: ciNotReadonly,
-      details: "Snapshot is not read-only (incomplete creation)"
-    )]
+    return
+      @[
+        ChainDiagnostic(
+          path: snap.path,
+          issue: ciNotReadonly,
+          details: "Snapshot is not read-only (incomplete creation)",
+        )
+      ]
 
   # Check for required metadata
   let hasMeta = hasRequiredProperties(snap.path)
   if hasMeta.isErr or not hasMeta.value:
-    return @[ChainDiagnostic(
-      path: snap.path,
-      issue: ciMissingMetadata,
-      details: "Snapshot is missing required properties"
-    )]
+    return
+      @[
+        ChainDiagnostic(
+          path: snap.path,
+          issue: ciMissingMetadata,
+          details: "Snapshot is missing required properties",
+        )
+      ]
 
   let meta = getSnapshotMetadata(snap.path)
   if meta.isErr:
-    return @[ChainDiagnostic(
-      path: snap.path,
-      issue: ciMissingMetadata,
-      details: meta.error.msg
-    )]
+    return
+      @[
+        ChainDiagnostic(
+          path: snap.path, issue: ciMissingMetadata, details: meta.error.msg
+        )
+      ]
 
   # Check parent exists for incremental snapshots using pattern matching
   case validateParentState(meta)
   of pvsNoParentRef:
-    return @[ChainDiagnostic(
-      path: snap.path,
-      issue: ciMissingParent,
-      details: "Incremental snapshot has no parent defined"
-    )]
+    return
+      @[
+        ChainDiagnostic(
+          path: snap.path,
+          issue: ciMissingParent,
+          details: "Incremental snapshot has no parent defined",
+        )
+      ]
   of pvsMissingParentPath:
-    return @[ChainDiagnostic(
-      path: snap.path,
-      issue: ciMissingParent,
-      details: "Parent snapshot not found: " & meta.value.parent.get
-    )]
+    return
+      @[
+        ChainDiagnostic(
+          path: snap.path,
+          issue: ciMissingParent,
+          details: "Parent snapshot not found: " & meta.value.parent.get,
+        )
+      ]
   of pvsFullSnapshot, pvsValidParent, pvsMetadataError:
-    discard  # No issues for these states
+    discard # No issues for these states
 
-  @[]  # No issues found
+  @[] # No issues found
 
 proc diagnoseChain*(snapshotDir: string): YabbResult[seq[ChainDiagnostic]] =
   ## Diagnose issues in the snapshot chain
@@ -127,16 +143,16 @@ proc canRecoverSnapshot*(path: string, snapshotDir: string): YabbResult[bool] =
   let chainInfo = getChainInfo(snapshotDir).valueOr:
     return err(error)
 
-  let foundFull = chainInfo.snapshots.findFirst(block:
-    it.timestamp < meta.value.timestamp and
-    (let snapMeta = getSnapshotMetadata(it.path); snapMeta.isOk and snapMeta.value.snapshotType == stFull)
+  let foundFull = chainInfo.snapshots.findFirst(
+    block:
+      it.timestamp < meta.value.timestamp and (
+        let snapMeta = getSnapshotMetadata(it.path)
+        snapMeta.isOk and snapMeta.value.snapshotType == stFull
+      )
   )
   ok(foundFull.isSome)
 
-proc repairChainMetadata*(
-  snapshotDir: string,
-  config: YabbConfig
-): YabbResult[int] =
+proc repairChainMetadata*(snapshotDir: string, config: YabbConfig): YabbResult[int] =
   ## Attempt to repair chain metadata issues
   ## Returns number of snapshots repaired
   if config.dryRun:
@@ -150,7 +166,10 @@ proc repairChainMetadata*(
     return ok(0)
 
   # Sort by timestamp (oldest first) - immutable sorted copy
-  let sorted = snapshots.sorted(proc(a, b: Snapshot): int {.raises: [].} = cmp(a.timestamp, b.timestamp))
+  let sorted = snapshots.sorted(
+    proc(a, b: Snapshot): int {.raises: [].} =
+      cmp(a.timestamp, b.timestamp)
+  )
 
   # Update chain length on all snapshots and count successes
   let chainLen = sorted.len
@@ -168,20 +187,25 @@ proc findRecoveryPoint*(snapshotDir: string): YabbResult[Opt[string]] =
     return ok(Opt.none(string))
 
   # Sort by timestamp descending (newest first) - immutable sorted copy
-  let sorted = chainInfo.snapshots.sorted(proc(a, b: Snapshot): int {.raises: [].} = cmp(b.timestamp, a.timestamp))
+  let sorted = chainInfo.snapshots.sorted(
+    proc(a, b: Snapshot): int {.raises: [].} =
+      cmp(b.timestamp, a.timestamp)
+  )
 
   # Find most recent full snapshot
-  let fullSnap = sorted.findFirst(block:
-    let meta = getSnapshotMetadata(it.path)
-    meta.isOk and meta.value.snapshotType == stFull
+  let fullSnap = sorted.findFirst(
+    block:
+      let meta = getSnapshotMetadata(it.path)
+      meta.isOk and meta.value.snapshotType == stFull
   )
   if fullSnap.isSome:
     return ok(Opt.some(fullSnap.get.path))
 
   # If no full snapshot, find most recent with valid parent chain
-  let recoverableSnap = sorted.findFirst(block:
-    let canRecover = canRecoverSnapshot(it.path, snapshotDir)
-    canRecover.isOk and canRecover.value
+  let recoverableSnap = sorted.findFirst(
+    block:
+      let canRecover = canRecoverSnapshot(it.path, snapshotDir)
+      canRecover.isOk and canRecover.value
   )
   if recoverableSnap.isSome:
     ok(Opt.some(recoverableSnap.get.path))
@@ -189,9 +213,7 @@ proc findRecoveryPoint*(snapshotDir: string): YabbResult[Opt[string]] =
     ok(Opt.none(string))
 
 proc rebuildChainFromFull*(
-  snapshotDir: string,
-  fullSnapshotPath: string,
-  config: YabbConfig
+    snapshotDir: string, fullSnapshotPath: string, config: YabbConfig
 ): YabbResult[void] =
   ## Rebuild chain starting from a full snapshot
   ## Deletes orphaned incrementals that can't be recovered
@@ -221,23 +243,28 @@ proc rebuildChainFromFull*(
         if snapMeta.isErr:
           # Delete snapshots without metadata
           let delRes = deleteSubvolume(b.path, config.dryRun)
-          if delRes.isOk: (a[0], a[1] + 1) else: a
+          if delRes.isOk:
+            (a[0], a[1] + 1)
+          else:
+            a
         elif snapMeta.value.timestamp < meta.value.timestamp:
           # Older than full snapshot - delete
           let delRes = deleteSubvolume(b.path, config.dryRun)
-          if delRes.isOk: (a[0], a[1] + 1) else: a
+          if delRes.isOk:
+            (a[0], a[1] + 1)
+          else:
+            a
         else:
-          (a[0] + 1, a[1])
-    , (0, 0))
+          (a[0] + 1, a[1]),
+    (0, 0),
+  )
 
-  info "Chain rebuilt from full snapshot",
-    kept = keptCount, deleted = deletedCount
+  info "Chain rebuilt from full snapshot", kept = keptCount, deleted = deletedCount
 
   ok()
 
 proc cleanupIncompleteSnapshots*(
-  snapshotDir: string,
-  config: YabbConfig
+    snapshotDir: string, config: YabbConfig
 ): YabbResult[tuple[cleaned: int, failed: int]] =
   ## Find and delete incomplete snapshots (not readonly or invalid subvolumes)
   ## Returns count of cleaned and failed deletions
@@ -248,9 +275,8 @@ proc cleanupIncompleteSnapshots*(
     return err(error)
 
   # Filter to only incomplete snapshot issues using set membership
-  let incompleteIssues = diagnostics.filterIt(
-    it.issue in {ciNotReadonly, ciInvalidSubvolume}
-  )
+  let incompleteIssues =
+    diagnostics.filterIt(it.issue in {ciNotReadonly, ciInvalidSubvolume})
 
   if incompleteIssues.len == 0:
     debug "No incomplete snapshots found", snapshotDir = snapshotDir
@@ -261,7 +287,7 @@ proc cleanupIncompleteSnapshots*(
     block:
       if config.dryRun:
         info "DRY_RUN: Would delete incomplete snapshot",
-             path = b.path, issue = $b.issue
+          path = b.path, issue = $b.issue
         (a[0] + 1, a[1])
       else:
         let delRes = deleteSubvolume(b.path, config.dryRun)
@@ -270,17 +296,19 @@ proc cleanupIncompleteSnapshots*(
           (a[0] + 1, a[1])
         else:
           warn "Failed to delete incomplete snapshot",
-               path = b.path, error = delRes.error.msg
-          (a[0], a[1] + 1)
-    , (0, 0))
+            path = b.path, error = delRes.error.msg
+          (a[0], a[1] + 1),
+    (0, 0),
+  )
 
   info "Incomplete snapshot cleanup completed", cleaned = cleaned, failed = failed
   ok((cleaned: cleaned, failed: failed))
 
 proc recoverChain*(
-  snapshotDir: string,
-  config: YabbConfig
-): YabbResult[tuple[incompletesCleaned: int, orphansRemoved: int, metadataRepaired: int]] =
+    snapshotDir: string, config: YabbConfig
+): YabbResult[
+    tuple[incompletesCleaned: int, orphansRemoved: int, metadataRepaired: int]
+] =
   ## Full chain recovery: find recovery point, cleanup, and repair metadata
   ## Enhanced recovery with intelligent anchor point detection
   ##
@@ -321,8 +349,7 @@ proc recoverChain*(
       if orphansRemoved > 0:
         info "Removed orphaned snapshots during chain rebuild", count = orphansRemoved
     else:
-      debug "Recovery point is incremental, skipping chain rebuild",
-        path = recoveryPath
+      debug "Recovery point is incremental, skipping chain rebuild", path = recoveryPath
 
   # Step 3: Clean up incomplete snapshots
   let cleanupRes = cleanupIncompleteSnapshots(snapshotDir, config).valueOr:
@@ -333,10 +360,16 @@ proc recoverChain*(
     return err(error)
 
   info "Chain recovery completed",
-       incompletesCleaned = cleanupRes.cleaned,
-       orphansRemoved = orphansRemoved,
-       metadataRepaired = repairRes
+    incompletesCleaned = cleanupRes.cleaned,
+    orphansRemoved = orphansRemoved,
+    metadataRepaired = repairRes
 
-  ok((incompletesCleaned: cleanupRes.cleaned, orphansRemoved: orphansRemoved, metadataRepaired: repairRes))
+  ok(
+    (
+      incompletesCleaned: cleanupRes.cleaned,
+      orphansRemoved: orphansRemoved,
+      metadataRepaired: repairRes,
+    )
+  )
 
 {.pop.}

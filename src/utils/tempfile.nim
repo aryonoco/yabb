@@ -15,12 +15,11 @@ import std/[os, tempfiles]
 import ../types
 import ../errors
 
-type
-  TempFileGuard* = object
-    ## RAII guard for temporary files
-    ## Automatically removes the file when the guard goes out of scope
-    path*: string
-    valid: bool
+type TempFileGuard* = object
+  ## RAII guard for temporary files
+  ## Automatically removes the file when the guard goes out of scope
+  path*: string
+  valid: bool
 
 proc `=destroy`*(g: TempFileGuard) =
   ## Destructor - automatically removes temp file on scope exit
@@ -28,11 +27,15 @@ proc `=destroy`*(g: TempFileGuard) =
     try:
       removeFile(g.path)
     except OSError:
-      discard  # Ignore removal errors
+      discard # Ignore removal errors
 
-proc `=copy`*(dest: var TempFileGuard, src: TempFileGuard) {.error: "TempFileGuard cannot be copied - use move semantics".}
+proc `=copy`*(
+  dest: var TempFileGuard, src: TempFileGuard
+) {.error: "TempFileGuard cannot be copied - use move semantics".}
 
-proc `=dup`*(src: TempFileGuard): TempFileGuard {.error: "TempFileGuard cannot be duplicated".}
+proc `=dup`*(
+  src: TempFileGuard
+): TempFileGuard {.error: "TempFileGuard cannot be duplicated".}
 
 proc createTempFileGuard*(prefix, suffix: string): YabbResult[TempFileGuard] =
   ## Create a temporary file and return an RAII guard

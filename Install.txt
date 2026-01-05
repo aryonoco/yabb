@@ -1,0 +1,242 @@
+================================================================================
+YABB - Yet Another BTRFS Backup
+Installation Guide
+================================================================================
+
+REQUIREMENTS
+------------
+- Linux with BTRFS filesystems (source and destination must both be BTRFS)
+- Root access (sudo) for backup operations
+- btrfs-progs 5.14 or newer
+- Standard tools: pv, flock, setfattr, getfattr
+
+Most Linux distributions include these tools. On Debian/Ubuntu:
+  sudo apt install btrfs-progs pv attr
+
+On Fedora:
+  sudo dnf install btrfs-progs pv attr
+
+On Arch Linux:
+  sudo pacman -S btrfs-progs pv attr
+
+
+================================================================================
+OPTION A: USER INSTALLATION (Recommended)
+================================================================================
+
+This installs yabb for your user only, without modifying system directories.
+
+1. Extract and install the binary:
+
+   tar xzf yabb-*.tar.gz
+   mkdir -p ~/.local/bin
+   cp yabb-*/yabb ~/.local/bin/
+   chmod +x ~/.local/bin/yabb
+
+2. Verify ~/.local/bin is in your PATH:
+
+   echo $PATH | grep -q "$HOME/.local/bin" && echo "OK" || echo "Not in PATH"
+
+   On Debian, Ubuntu, and Fedora, ~/.local/bin is automatically added to PATH
+   when it exists. If it's not in your PATH:
+
+   # For bash, add to ~/.bashrc:
+   export PATH="$HOME/.local/bin:$PATH"
+
+   # For zsh, add to ~/.zshrc:
+   export PATH="$HOME/.local/bin:$PATH"
+
+   # For fish, run:
+   fish_add_path ~/.local/bin
+
+   NOTE: Arch Linux does NOT add ~/.local/bin to PATH by default.
+   You must add it manually as shown above.
+
+3. Verify the installation:
+
+   yabb --help
+
+4. Create your configuration file:
+
+   mkdir -p ~/.config/yabb
+   cp yabb-*/yabb.conf ~/.config/yabb/yabb.toml
+   nano ~/.config/yabb/yabb.toml    # or your preferred editor
+
+   Update the [paths] section with your actual directories:
+   - src_dir: The directory you want to back up (must be on BTRFS)
+   - dst_dir: Where to send snapshots (must be on BTRFS)
+   - snapshot_dir: Where to store local snapshots (must be on BTRFS)
+
+
+SHELL COMPLETIONS (User Installation)
+-------------------------------------
+For Bash (add to ~/.bashrc):
+   mkdir -p ~/.local/share/bash-completion/completions
+   cp yabb-*/yabb.bash ~/.local/share/bash-completion/completions/yabb
+   # Restart your shell or run: source ~/.local/share/bash-completion/completions/yabb
+
+For Zsh (add to ~/.zshrc):
+   mkdir -p ~/.local/share/zsh/site-functions
+   cp yabb-*/yabb.zsh ~/.local/share/zsh/site-functions/_yabb
+   # Restart your shell or run: exec zsh
+
+For Fish:
+   mkdir -p ~/.config/fish/completions
+   cp yabb-*/yabb.fish ~/.config/fish/completions/yabb.fish
+   # Restart your shell or run: exec fish
+
+
+================================================================================
+OPTION B: SYSTEM-WIDE INSTALLATION
+================================================================================
+
+This installs yabb for all users on the system.
+
+1. Extract and install to /opt:
+
+   tar xzf yabb-*.tar.gz
+   sudo mkdir -p /opt/yabb/bin
+   sudo cp yabb-*/yabb /opt/yabb/bin/
+   sudo chmod +x /opt/yabb/bin/yabb
+
+2. Add to system PATH (create a profile script):
+
+   echo 'export PATH="/opt/yabb/bin:$PATH"' | sudo tee /etc/profile.d/yabb.sh
+   sudo chmod +x /etc/profile.d/yabb.sh
+
+   Log out and back in, or run: source /etc/profile.d/yabb.sh
+
+3. Verify the installation:
+
+   yabb --help
+
+4. Create the system configuration:
+
+   sudo cp yabb-*/yabb.conf /etc/yabb.toml
+   sudo nano /etc/yabb.toml    # or your preferred editor
+
+   Update the [paths] section with your actual directories.
+
+
+SHELL COMPLETIONS (System-Wide)
+-------------------------------
+For Bash:
+   sudo cp yabb-*/yabb.bash /etc/bash_completion.d/yabb
+   # Restart your shell or run: source /etc/bash_completion.d/yabb
+
+For Zsh:
+   sudo mkdir -p /usr/local/share/zsh/site-functions
+   sudo cp yabb-*/yabb.zsh /usr/local/share/zsh/site-functions/_yabb
+   # Restart your shell or run: exec zsh
+
+For Fish:
+   sudo mkdir -p /usr/share/fish/vendor_completions.d
+   sudo cp yabb-*/yabb.fish /usr/share/fish/vendor_completions.d/yabb.fish
+   # Restart your shell or run: exec fish
+
+
+================================================================================
+CONFIGURATION
+================================================================================
+
+YABB searches for configuration in this order:
+1. Path specified with --configPath
+2. /etc/yabb.toml (system-wide)
+3. ~/.config/yabb/yabb.toml (user)
+
+The configuration file uses TOML format. Key sections:
+
+[paths]
+  src_dir = "/data"           # Source directory to back up
+  dst_dir = "/backup"         # Destination for snapshots
+  snapshot_dir = "/snapshots" # Local snapshot storage
+
+[retention]
+  hourly = 24    # Keep 24 hourly snapshots
+  daily = 7      # Keep 7 daily snapshots
+  weekly = 4     # Keep 4 weekly snapshots
+  monthly = 6    # Keep 6 monthly snapshots
+  yearly = 2     # Keep 2 yearly snapshots
+
+[compression]
+  algorithm = "zstd"  # Options: zstd, zlib, lzo
+  level = 3           # 1-15 for zstd; 1-9 for zlib/lzo
+
+
+================================================================================
+QUICK START
+================================================================================
+
+1. Validate your configuration:
+   sudo yabb validate
+
+2. Check the current status:
+   sudo yabb status
+
+3. See what a backup would do (dry run):
+   sudo yabb run --dryRun
+
+4. Run your first backup:
+   sudo yabb run
+
+5. Check health of your backup chain:
+   sudo yabb health
+
+
+================================================================================
+SYSTEMD TIMER (optional)
+================================================================================
+
+For automated hourly backups, create these files:
+
+/etc/systemd/system/yabb.service:
+  [Unit]
+  Description=YABB BTRFS backup
+  After=local-fs.target
+
+  [Service]
+  Type=oneshot
+  ExecStart=/opt/yabb/bin/yabb run
+  # Or for user install: ExecStart=/home/YOUR_USER/.local/bin/yabb run
+  Nice=19
+  IOSchedulingClass=idle
+
+/etc/systemd/system/yabb.timer:
+  [Unit]
+  Description=Run YABB backup hourly
+
+  [Timer]
+  OnCalendar=hourly
+  Persistent=true
+  RandomizedDelaySec=300
+
+  [Install]
+  WantedBy=timers.target
+
+Enable and start the timer:
+  sudo systemctl daemon-reload
+  sudo systemctl enable --now yabb.timer
+
+Check timer status:
+  sudo systemctl list-timers yabb.timer
+
+
+================================================================================
+TROUBLESHOOTING
+================================================================================
+
+- "Permission denied": Run with sudo
+- "Not a btrfs filesystem": Ensure all paths are on BTRFS volumes
+- "No parent snapshot": First run creates a full snapshot (expected)
+- "Config file not found": Create config at ~/.config/yabb/yabb.toml or /etc/yabb.toml
+- Check logs: journalctl -u yabb.service (if using systemd)
+
+
+================================================================================
+MORE INFORMATION
+================================================================================
+
+Documentation: https://github.com/aryonoco/yabb
+Report issues: https://github.com/aryonoco/yabb/issues
+
+================================================================================

@@ -60,4 +60,4 @@ suite "Signal handler installation":
     # Just verify it can be called without error
     # Actual signal handling requires sending signals which is complex to test
     installSignalHandlers()
-    check true  # If we got here, installation succeeded
+    check true # If we got here, installation succeeded

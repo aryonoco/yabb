@@ -1,36 +1,304 @@
-# Nim compilation cache
+# =============================================================================
+# YABB - Yet Another BTRFS Backup
+# Comprehensive .gitignore following project standards
+# =============================================================================
+
+# -----------------------------------------------------------------------------
+# Nim Compilation & Build
+# -----------------------------------------------------------------------------
 nimcache/
 nimblecache/
-
-# Generated documentation
-htmldocs/
-docs/
-
-# Nimble develop workflow files
+nimbledeps/
 nimble.develop
 nimble.paths
-nimbledeps/
 
 # Compiled binaries
 bin/
+build/
+out/
 *.exe
 *.dll
 *.so
 *.dylib
 
-# Build directories
-build/
-out/
+# Project binary
+yabb
 
-# Editor/IDE
+# Generated documentation
+htmldocs/
+docs/
+
+# -----------------------------------------------------------------------------
+# Operating System Files
+# -----------------------------------------------------------------------------
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+._*
+.DocumentRevisions-V100
+.fseventsd
+.Spotlight-V100
+.TemporaryItems
+.Trashes
+.VolumeIcon.icns
+.com.apple.timemachine.donotpresent
+
+# Windows
+Thumbs.db
+Thumbs.db:encryptable
+ehthumbs.db
+ehthumbs_vista.db
+*.stackdump
+[Dd]esktop.ini
+$RECYCLE.BIN/
+*.lnk
+
+# Linux
+.directory
+.Trash-*
+.nfs*
+.fuse_hidden*
+
+# -----------------------------------------------------------------------------
+# IDEs & Editors
+# -----------------------------------------------------------------------------
+# VSCode (devcontainer manages settings)
+.vscode/
+
+# JetBrains
+.idea/
+*.iml
+*.ipr
+*.iws
+out/
+.idea_modules/
+
+# Vim/Neovim
+[._]*.s[a-v][a-z]
+!*.svg
+[._]*.sw[a-p]
+[._]s[a-rt-v][a-z]
+[._]ss[a-gi-z]
+[._]sw[a-p]
+Session.vim
+Sessionx.vim
+.netrwhist
+*~
+tags
+[._]*.un~
+
+# Emacs
+\#*\#
+/.emacs.desktop
+/.emacs.desktop.lock
+*.elc
+auto-save-list
+tramp
+.\#*
+.org-id-locations
+*_archive
+*_flymake.*
+/eshell/history
+/eshell/lastdir
+/elpa/
+*.rel
+/auto/
+.cask/
+dist/
+flycheck_*.el
+.projectile
+.dir-locals.el
+/network-security.data
+
+# Sublime Text
+*.sublime-workspace
+*.sublime-project
+
+# -----------------------------------------------------------------------------
+# Version Control Artifacts
+# -----------------------------------------------------------------------------
+*.orig
+*.BACKUP.*
+*.BASE.*
+*.LOCAL.*
+*.REMOTE.*
+*_BACKUP_*.txt
+*_BASE_*.txt
+*_LOCAL_*.txt
+*_REMOTE_*.txt
+
+# Legacy VCS
+.svn/
+.hg/
+.bzr/
+
+# -----------------------------------------------------------------------------
+# Security & Credentials
+# -----------------------------------------------------------------------------
+# Private keys
+*.pem
+*.key
+*.p12
+*.pfx
+*.csr
+id_rsa
+id_rsa.pub
+id_dsa
+id_dsa.pub
+id_ecdsa
+id_ecdsa.pub
+id_ed25519
+id_ed25519.pub
+
+# Certificates (keep .crt if needed for distribution)
+# *.crt
+
+# Credentials
+credentials.json
+service-account.json
+.credentials/
+.secrets/
+secrets/
+
+# Environment files
+.env
+.env.*
+!.env.example
+!.env.template
+
+# Session/token files
+.token
+.session
+session_store/
+sessions/
+
+# Password files
+passwords.txt
+passwords.json
+.htpasswd
+
+# -----------------------------------------------------------------------------
+# AI/LLM Development Tools (following project standards)
+# -----------------------------------------------------------------------------
+# Anthropic/Claude
+.claude/
+.claude*
+*_claude.*
+.anthropic/
+# Note: CLAUDE.md is tracked (project documentation)
+
+# OpenAI
+.openai/
+.openai*
+.gpt*
+.chatgpt/
+.gptcommit*
+
+# GitHub Copilot
+.copilot/
+.copilot*
+
+# Other AI Assistants
+.aider*
+.cursor/
+.cursor*
+.continue/
+.codeium*
+.tabnine*
+.kite/
+
+# AI Agents
+.auto-gpt/
+.agent/
+.langchain/
+.autogen/
+.crewai/
+
+# AI Conversations/History
+.chat/
+.chat-*
+chat-history*
+conversation-*
+ai-conversations/
+
+# AI Model/Training Artifacts
+.models/
+.embeddings/
+.vectors/
+.checkpoints/
+.wandb/
+.mlflow/
+mlruns/
+
+# -----------------------------------------------------------------------------
+# Logs & Temporary Files
+# -----------------------------------------------------------------------------
+# Logs
+*.log
+*.log.*
+logs/
+log/
+nohup.out
+
+# Temporary files
+tmp/
+temp/
+*.tmp
+*.temp
 *.swp
 *.swo
-*~
-.idea/
+*.bak
+*.backup
+*.old
+backup/
+backups/
 
-# OS files
-.DS_Store
-Thumbs.db
+# Cache
+.cache/
+*.cache
+cache/
 
-# Project-specific binary
-yabb
+# -----------------------------------------------------------------------------
+# Testing & Coverage
+# -----------------------------------------------------------------------------
+# Test output
+test-results/
+test-output/
+*.test
+testresults.html
+
+# Coverage (if added later)
+coverage/
+htmlcov/
+*.coverage
+coverage.xml
+
+# -----------------------------------------------------------------------------
+# Docker (if containerization is used beyond devcontainer)
+# -----------------------------------------------------------------------------
+.docker/
+docker-compose.override.yml
+docker-compose.override.yaml
+
+# -----------------------------------------------------------------------------
+# Miscellaneous
+# -----------------------------------------------------------------------------
+# Archives
+*.zip
+*.tar
+*.tar.gz
+*.tgz
+*.rar
+*.7z
+
+# Core dumps
+core
+core.*
+*.core
+
+# Debug files
+*.dSYM/
+*.su
+*.idb
+*.pdb

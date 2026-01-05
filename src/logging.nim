@@ -18,8 +18,8 @@
 
 import wrappers/log
 import wrappers/journal
-export log  # Re-export so other modules can use logging macros
-export journal  # Re-export for journald integration
+export log # Re-export so other modules can use logging macros
+export journal # Re-export for journald integration
 
 # Module-level journal context - immutable after initialization
 # This is acceptable since JournalContext is immutable (no state changes after creation)

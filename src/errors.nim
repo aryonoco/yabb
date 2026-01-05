@@ -55,14 +55,17 @@ proc logSummary*(scriptStatus: int, stats: ExecutionStats) =
   ## Log comprehensive execution summary with immutable stats
   ## Includes runtime, snapshots created/deleted, operations, and status
   # Calculate runtime if start time was set
-  let runtime = if stats.startTime > 0.0:
-    let elapsed = epochTime() - stats.startTime
-    let mins = int(elapsed) div 60
-    let secs = int(elapsed) mod 60
-    if mins > 0: $mins & "m " & $secs & "s"
-    else: $secs & "s"
-  else:
-    "unknown"
+  let runtime =
+    if stats.startTime > 0.0:
+      let elapsed = epochTime() - stats.startTime
+      let mins = int(elapsed) div 60
+      let secs = int(elapsed) mod 60
+      if mins > 0:
+        $mins & "m " & $secs & "s"
+      else:
+        $secs & "s"
+    else:
+      "unknown"
 
   # Log summary line with all details
   if scriptStatus != 0 or stats.errors > 0:

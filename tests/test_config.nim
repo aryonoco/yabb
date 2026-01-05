@@ -14,7 +14,7 @@ import std/[os, tempfiles, strutils]
 import ../src/types
 import ../src/config
 import ../src/errors
-import ../src/btrfs/operations  # isBtrfsFilesystem
+import ../src/btrfs/operations # isBtrfsFilesystem
 
 suite "Configuration loading":
   test "missing config file returns error":
@@ -40,11 +40,15 @@ suite "Configuration loading":
       file.close()
       removeFile(path)
 
-    file.write("""
+    file.write(
+      """
 [paths]
-src_dir = """" & srcDir & """"
-dst_dir = """" & dstDir & """"
-snapshot_dir = """" & snapDir & """"
+src_dir = """" & srcDir &
+        """"
+dst_dir = """" & dstDir &
+        """"
+snapshot_dir = """" & snapDir &
+        """"
 
 [compression]
 algorithm = "zstd"
@@ -61,7 +65,8 @@ yearly = 2
 min_free_space = 1024
 retry_count = 3
 retry_delay = 5
-""")
+"""
+    )
     file.flushFile()
 
     let result = loadConfig(path)
@@ -100,12 +105,17 @@ retry_delay = 5
       removeFile(path)
 
     # Minimal config - only required paths
-    file.write("""
+    file.write(
+      """
 [paths]
-src_dir = """" & srcDir & """"
-dst_dir = """" & dstDir & """"
-snapshot_dir = """" & snapDir & """"
-""")
+src_dir = """" & srcDir &
+        """"
+dst_dir = """" & dstDir &
+        """"
+snapshot_dir = """" & snapDir &
+        """"
+"""
+    )
     file.flushFile()
 
     let result = loadConfig(path)
@@ -130,11 +140,13 @@ snapshot_dir = """" & snapDir & """"
       file.close()
       removeFile(path)
 
-    file.write("""
+    file.write(
+      """
 [compression]
 algorithm = "zstd"
 level = 3
-""")
+"""
+    )
     file.flushFile()
 
     let result = loadConfig(path)
@@ -146,11 +158,13 @@ level = 3
       file.close()
       removeFile(path)
 
-    file.write("""
+    file.write(
+      """
 [paths]
 src_dir = "/data"
 # Missing dst_dir and snapshot_dir
-""")
+"""
+    )
     file.flushFile()
 
     let result = loadConfig(path)
@@ -162,7 +176,8 @@ src_dir = "/data"
       file.close()
       removeFile(path)
 
-    file.write("""
+    file.write(
+      """
 [paths]
 src_dir = "/data"
 dst_dir = "/backup"
@@ -171,7 +186,8 @@ snapshot_dir = "/snapshots"
 [compression]
 algorithm = "invalid"
 level = 3
-""")
+"""
+    )
     file.flushFile()
 
     let result = loadConfig(path)
@@ -181,11 +197,12 @@ suite "Configuration validation":
   test "validateConfig returns error for non-existent source":
     let cfg = YabbConfig(
       srcDir: SourcePath("/nonexistent/source"),
-      dstDir: DestPath("/tmp"),  # This exists
+      dstDir: DestPath("/tmp"), # This exists
       snapshotDir: SnapshotDirPath("/tmp"),
       compression: CompressionLevel(algo: caZstd, level: 3),
       retention: RetentionPolicy(hourly: 24, daily: 7, weekly: 4, monthly: 6, yearly: 2),
-      optimization: OptimizationConfig(enabled: true, balanceThreshold: 75, defragThreshold: 50),
+      optimization:
+        OptimizationConfig(enabled: true, balanceThreshold: 75, defragThreshold: 50),
       chain: ChainConfig(maxLength: 10),
       debug: false,
       dryRun: false,
@@ -193,7 +210,7 @@ suite "Configuration validation":
       minFreeSpace: 1024,
       maxParallelJobs: 1,
       retryCount: 3,
-      retryDelay: 5
+      retryDelay: 5,
     )
 
     let result = validateConfig(cfg)
@@ -202,12 +219,13 @@ suite "Configuration validation":
 
   test "validateConfig returns error for non-existent destination":
     let cfg = YabbConfig(
-      srcDir: SourcePath("/tmp"),  # This exists
+      srcDir: SourcePath("/tmp"), # This exists
       dstDir: DestPath("/nonexistent/destination"),
       snapshotDir: SnapshotDirPath("/tmp"),
       compression: CompressionLevel(algo: caZstd, level: 3),
       retention: RetentionPolicy(hourly: 24, daily: 7, weekly: 4, monthly: 6, yearly: 2),
-      optimization: OptimizationConfig(enabled: true, balanceThreshold: 75, defragThreshold: 50),
+      optimization:
+        OptimizationConfig(enabled: true, balanceThreshold: 75, defragThreshold: 50),
       chain: ChainConfig(maxLength: 10),
       debug: false,
       dryRun: false,
@@ -215,7 +233,7 @@ suite "Configuration validation":
       minFreeSpace: 1024,
       maxParallelJobs: 1,
       retryCount: 3,
-      retryDelay: 5
+      retryDelay: 5,
     )
 
     let result = validateConfig(cfg)
@@ -225,15 +243,17 @@ suite "Configuration validation":
     # This test requires btrfs - skip on non-btrfs systems
     let btrfsCheck = isBtrfsFilesystem("/tmp")
     if btrfsCheck.isErr or not btrfsCheck.value:
-      skip()  # Skip test on non-btrfs systems
+      skip() # Skip test on non-btrfs systems
     else:
       let cfg = YabbConfig(
         srcDir: SourcePath("/tmp"),
         dstDir: DestPath("/tmp"),
         snapshotDir: SnapshotDirPath("/tmp"),
         compression: CompressionLevel(algo: caZstd, level: 3),
-        retention: RetentionPolicy(hourly: 24, daily: 7, weekly: 4, monthly: 6, yearly: 2),
-        optimization: OptimizationConfig(enabled: true, balanceThreshold: 75, defragThreshold: 50),
+        retention:
+          RetentionPolicy(hourly: 24, daily: 7, weekly: 4, monthly: 6, yearly: 2),
+        optimization:
+          OptimizationConfig(enabled: true, balanceThreshold: 75, defragThreshold: 50),
         chain: ChainConfig(maxLength: 10),
         debug: false,
         dryRun: false,
@@ -241,7 +261,7 @@ suite "Configuration validation":
         minFreeSpace: 1024,
         maxParallelJobs: 1,
         retryCount: 3,
-        retryDelay: 5
+        retryDelay: 5,
       )
       let result = validateConfig(cfg)
       check result.isOk
@@ -250,15 +270,17 @@ suite "Configuration validation":
     # This test requires non-btrfs filesystem
     let btrfsCheck = isBtrfsFilesystem("/tmp")
     if btrfsCheck.isErr or btrfsCheck.value:
-      skip()  # Skip test on btrfs systems
+      skip() # Skip test on btrfs systems
     else:
       let cfg = YabbConfig(
         srcDir: SourcePath("/tmp"),
         dstDir: DestPath("/tmp"),
         snapshotDir: SnapshotDirPath("/tmp"),
         compression: CompressionLevel(algo: caZstd, level: 3),
-        retention: RetentionPolicy(hourly: 24, daily: 7, weekly: 4, monthly: 6, yearly: 2),
-        optimization: OptimizationConfig(enabled: true, balanceThreshold: 75, defragThreshold: 50),
+        retention:
+          RetentionPolicy(hourly: 24, daily: 7, weekly: 4, monthly: 6, yearly: 2),
+        optimization:
+          OptimizationConfig(enabled: true, balanceThreshold: 75, defragThreshold: 50),
         chain: ChainConfig(maxLength: 10),
         debug: false,
         dryRun: false,
@@ -266,7 +288,7 @@ suite "Configuration validation":
         minFreeSpace: 1024,
         maxParallelJobs: 1,
         retryCount: 3,
-        retryDelay: 5
+        retryDelay: 5,
       )
       let result = validateConfig(cfg)
       check result.isErr

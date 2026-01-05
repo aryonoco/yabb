@@ -1,0 +1,110 @@
+# =============================================================================
+# YABB Release Workflow
+# Builds static musl binary and creates GitHub Release on v* tags
+# =============================================================================
+
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    name: Build and Release
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Load versions from versions.env
+        run: |
+          # Source versions.env and export to GitHub Actions environment
+          if [ -f versions.env ]; then
+            source versions.env
+            echo "NIM_VERSION=$NIM_VERSION" >> $GITHUB_ENV
+            echo "CHOOSENIM_VERSION=$CHOOSENIM_VERSION" >> $GITHUB_ENV
+            echo "Loaded versions: NIM=$NIM_VERSION, CHOOSENIM=$CHOOSENIM_VERSION"
+          else
+            echo "ERROR: versions.env not found"
+            exit 1
+          fi
+
+      - name: Setup Nim ${{ env.NIM_VERSION }}
+        uses: jiro4989/setup-nim-action@v2
+        with:
+          nim-version: ${{ env.NIM_VERSION }}
+          repo-token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Install musl toolchain
+        run: sudo apt-get update && sudo apt-get install -y musl-tools musl-dev
+
+      - name: Install project dependencies
+        run: nimble install -d --accept
+
+      - name: Build static binary
+        run: nimble release
+
+      - name: Verify binary is static
+        run: |
+          echo "Binary info:"
+          file bin/yabb
+          echo ""
+          echo "Checking for static linkage..."
+          if ldd bin/yabb 2>&1 | grep -qE "not a dynamic executable|statically linked"; then
+            echo "OK: Binary is statically linked"
+          else
+            echo "ERROR: Binary appears to be dynamically linked"
+            ldd bin/yabb
+            exit 1
+          fi
+          echo ""
+          echo "Binary size:"
+          ls -lh bin/yabb
+
+      - name: Prepare release archive
+        run: |
+          # Extract version without 'v' prefix
+          VERSION="${GITHUB_REF_NAME#v}"
+          ARCHIVE_NAME="yabb-${VERSION}-linux-x86_64"
+          mkdir -p "${ARCHIVE_NAME}"
+
+          # Copy binary
+          cp bin/yabb "${ARCHIVE_NAME}/"
+
+          # Copy completions
+          cp completions/yabb.bash "${ARCHIVE_NAME}/"
+          cp completions/yabb.fish "${ARCHIVE_NAME}/"
+          cp completions/yabb.zsh "${ARCHIVE_NAME}/"
+
+          # Copy and rename sample config
+          cp config/yabb.toml.example "${ARCHIVE_NAME}/yabb.conf"
+
+          # Copy installation instructions
+          cp Install.txt "${ARCHIVE_NAME}/"
+
+          # Create tarball
+          tar -czvf "${ARCHIVE_NAME}.tar.gz" "${ARCHIVE_NAME}"
+
+          # List contents for verification
+          echo ""
+          echo "Archive contents:"
+          tar -tzvf "${ARCHIVE_NAME}.tar.gz"
+
+          # Output for subsequent steps
+          echo "ARCHIVE_NAME=${ARCHIVE_NAME}" >> $GITHUB_ENV
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: ${{ env.ARCHIVE_NAME }}.tar.gz
+          generate_release_notes: true
+          draft: false
+          prerelease: ${{ contains(github.ref_name, '-') }}
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

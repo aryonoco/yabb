@@ -30,7 +30,7 @@ const RequiredCommands* = [
   ("uuidgen", "For generating unique IDs"),
   ("df", "For disk space checks"),
   ("flock", "For file locking"),
-  ("mktemp", "For temporary file creation")
+  ("mktemp", "For temporary file creation"),
 ]
 
 {.push raises: [].}
@@ -62,8 +62,11 @@ proc checkBtrfsSendReceive*(): YabbResult[void] =
 
   # Verify --compressed-data flag is supported (btrfs-progs >= 5.14)
   if not res.value.output.contains("compressed-data"):
-    return err(prereqError(
-      "btrfs-progs version doesn't support --compressed-data (requires >= 5.14)"))
+    return err(
+      prereqError(
+        "btrfs-progs version doesn't support --compressed-data (requires >= 5.14)"
+      )
+    )
 
   debug "btrfs send/receive verified", compressedData = true
   ok()
@@ -93,16 +96,23 @@ proc checkPrerequisites*(config: YabbConfig): YabbResult[void] =
   # 2. Check required commands - find first missing
   let missingCmd = RequiredCommands.toSeq.findFirst(not checkCommand(it[0]))
   if missingCmd.isSome:
-    return err(prereqError("Required command not found: " & missingCmd.get[0] & " (" & missingCmd.get[1] & ")"))
+    return err(
+      prereqError(
+        "Required command not found: " & missingCmd.get[0] & " (" & missingCmd.get[1] &
+          ")"
+      )
+    )
   RequiredCommands.toSeq.applyIt:
     debug "Found required command", cmd = it[0]
 
   # 3. Check btrfs tools with retry
+
   retry(
     config.retryCount,
     config.retryDelay,
-    proc(): YabbResult[void] {.raises: [].} = checkBtrfsFeatures(),
-    "Checking btrfs tools"
+    proc(): YabbResult[void] {.raises: [].} =
+      checkBtrfsFeatures(),
+    "Checking btrfs tools",
   ).isOkOr:
     return err(error)
 
@@ -114,8 +124,14 @@ proc checkPrerequisites*(config: YabbConfig): YabbResult[void] =
   if not config.dryRun:
     let srcErrors = hasErrors($config.srcDir)
     if srcErrors.isOk and srcErrors.value:
-      return err(yabbErr(ecDeviceErrors, "PREREQ",
-        "BTRFS device has errors on source directory. Run 'btrfs scrub' first: " & $config.srcDir))
+      return err(
+        yabbErr(
+          ecDeviceErrors,
+          "PREREQ",
+          "BTRFS device has errors on source directory. Run 'btrfs scrub' first: " &
+            $config.srcDir,
+        )
+      )
 
   # 6. Check directory write permissions - use helper to avoid closure capture issues
   if not config.dryRun:
@@ -123,9 +139,11 @@ proc checkPrerequisites*(config: YabbConfig): YabbResult[void] =
       retry(
         config.retryCount,
         config.retryDelay,
-        proc(): YabbResult[void] {.raises: [].} = checkDirectoryWritable(dir, config.dryRun),
-        "Checking write access to " & dir
+        proc(): YabbResult[void] {.raises: [].} =
+          checkDirectoryWritable(dir, config.dryRun),
+        "Checking write access to " & dir,
       ).isErr
+
     let requiredDirs = @["/tmp", parentDir(LockFile), parentDir(LastSnapshotFile)]
     let failedDir = requiredDirs.findFirst(checkDir(it))
     if failedDir.isSome:

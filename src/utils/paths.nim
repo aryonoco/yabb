@@ -41,24 +41,33 @@ proc sanitizePath*(path: string): YabbResult[string] =
     return err(yabbErr(ecInvalidVar, "PATH", "Invalid path: " & stripped))
 
   # Convert to absolute path - immutable binding with conditional
-  let absolutePath = if stripped.isAbsolute:
-    stripped
-  else:
-    try:
-      getCurrentDir() / stripped
-    except OSError as e:
-      return err(yabbErr(ecInvalidVar, "PATH", "Failed to get current directory: " & e.msg))
+  let absolutePath =
+    if stripped.isAbsolute:
+      stripped
+    else:
+      try:
+        getCurrentDir() / stripped
+      except OSError as e:
+        return err(
+          yabbErr(ecInvalidVar, "PATH", "Failed to get current directory: " & e.msg)
+        )
 
   # Normalize and resolve symlinks - immutable binding with try expression
-  let resolved = try:
-    expandFilename(absolutePath)
-  except OSError as e:
-    return err(yabbErr(ecInvalidVar, "PATH", "Failed to resolve path: " & e.msg))
+  let resolved =
+    try:
+      expandFilename(absolutePath)
+    except OSError as e:
+      return err(yabbErr(ecInvalidVar, "PATH", "Failed to resolve path: " & e.msg))
 
   # Post-resolution security check for dangerous patterns
   if containsDangerousPattern(resolved):
-    return err(yabbErr(ecInvalidVar, "PATH",
-      "Path contains dangerous patterns after resolution: " & resolved))
+    return err(
+      yabbErr(
+        ecInvalidVar,
+        "PATH",
+        "Path contains dangerous patterns after resolution: " & resolved,
+      )
+    )
 
   # Check path length
   if resolved.len > MaxPathLength:
@@ -67,9 +76,9 @@ proc sanitizePath*(path: string): YabbResult[string] =
   ok(resolved)
 
 proc validatePath*(
-  path: string,
-  pathType: string = "any",  # "directory", "file", "any"
-  mustExist: bool = true
+    path: string,
+    pathType: string = "any", # "directory", "file", "any"
+    mustExist: bool = true,
 ): YabbResult[string] =
   ## Validate a path exists and is of the correct type
   ## - pathType: "directory", "file", or "any"
@@ -105,14 +114,26 @@ proc joinPaths*(base, sub: string): YabbResult[string] =
 proc isSubPath*(child, parent: string): bool =
   ## Check if child is a subpath of parent (path-component aware)
   ## Correctly handles edge cases like /var/logfiles not being under /var/log
-  let childNorm = try: expandFilename(child) except: return false
-  let parentNorm = try: expandFilename(parent) except: return false
+  let childNorm =
+    try:
+      expandFilename(child)
+    except:
+      return false
+  let parentNorm =
+    try:
+      expandFilename(parent)
+    except:
+      return false
 
   if childNorm == parentNorm:
     return true
 
   # Ensure we match path components, not just string prefix
-  let parentWithSep = if parentNorm.endsWith("/"): parentNorm else: parentNorm & "/"
+  let parentWithSep =
+    if parentNorm.endsWith("/"):
+      parentNorm
+    else:
+      parentNorm & "/"
   childNorm.startsWith(parentWithSep)
 
 proc ensureDir*(path: string, dryRun: bool = false): YabbResult[void] =
@@ -133,7 +154,10 @@ proc ensureDir*(path: string, dryRun: bool = false): YabbResult[void] =
 
 type
   PathPermission* = enum
-    ppRead, ppWrite, ppExecute
+    ppRead
+    ppWrite
+    ppExecute
+
   PathPermissions* = set[PathPermission]
 
 proc checkPathPermissions*(path: string, required: PathPermissions): YabbResult[void] =

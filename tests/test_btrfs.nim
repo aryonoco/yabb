@@ -36,7 +36,7 @@ suite "btrfs filesystem detection":
     # df behavior varies by system - may return error or false
     # Either outcome is acceptable for nonexistent paths
     if result.isOk:
-      check result.value == false  # If ok, should be false (not btrfs)
+      check result.value == false # If ok, should be false (not btrfs)
     # If error, that's also acceptable
 
   test "isBtrfsFilesystem on root returns result":

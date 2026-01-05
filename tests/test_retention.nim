@@ -183,17 +183,18 @@ suite "Snapshot selection":
     check result.len == 0
 
   test "single snapshot is always kept":
-    let snapshots = @[
-      Snapshot(
-        path: "/snapshots/backup.2024-01-15T120000Z",
-        name: "backup.2024-01-15T120000Z",
-        timestamp: dateTime(2024, mJan, 15, 12, 0, 0, zone = utc()),
-        snapshotType: stFull,
-        parent: Opt.none(string),
-        uuid: "uuid-1",
-        verified: true
-      )
-    ]
+    let snapshots =
+      @[
+        Snapshot(
+          path: "/snapshots/backup.2024-01-15T120000Z",
+          name: "backup.2024-01-15T120000Z",
+          timestamp: dateTime(2024, mJan, 15, 12, 0, 0, zone = utc()),
+          snapshotType: stFull,
+          parent: Opt.none(string),
+          uuid: "uuid-1",
+          verified: true,
+        )
+      ]
     let policy = RetentionPolicy(hourly: 1, daily: 1, weekly: 1, monthly: 1, yearly: 1)
     let result = selectSnapshotsToKeep(snapshots, policy)
     check result.len == 1
@@ -201,26 +202,27 @@ suite "Snapshot selection":
 
   test "most recent snapshot is always kept":
     let refTime = dateTime(2024, mJan, 15, 14, 0, 0, zone = utc())
-    let snapshots = @[
-      Snapshot(
-        path: "/snapshots/old",
-        name: "old",
-        timestamp: dateTime(2024, mJan, 1, 12, 0, 0, zone = utc()),
-        snapshotType: stFull,
-        parent: Opt.none(string),
-        uuid: "uuid-old",
-        verified: true
-      ),
-      Snapshot(
-        path: "/snapshots/new",
-        name: "new",
-        timestamp: dateTime(2024, mJan, 15, 13, 0, 0, zone = utc()),
-        snapshotType: stIncremental,
-        parent: Opt.some("/snapshots/old"),
-        uuid: "uuid-new",
-        verified: true
-      )
-    ]
+    let snapshots =
+      @[
+        Snapshot(
+          path: "/snapshots/old",
+          name: "old",
+          timestamp: dateTime(2024, mJan, 1, 12, 0, 0, zone = utc()),
+          snapshotType: stFull,
+          parent: Opt.none(string),
+          uuid: "uuid-old",
+          verified: true,
+        ),
+        Snapshot(
+          path: "/snapshots/new",
+          name: "new",
+          timestamp: dateTime(2024, mJan, 15, 13, 0, 0, zone = utc()),
+          snapshotType: stIncremental,
+          parent: Opt.some("/snapshots/old"),
+          uuid: "uuid-new",
+          verified: true,
+        ),
+      ]
     let policy = RetentionPolicy(hourly: 0, daily: 0, weekly: 0, monthly: 0, yearly: 0)
     let result = selectSnapshotsToKeep(snapshots, policy, refTime)
 

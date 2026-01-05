@@ -37,18 +37,18 @@ func isValidSnapshotName*(name: string): bool =
   # YYYY-MM-DDTHHMMSSZ
   # 0123456789012345678
   #           1111111
-  template isDigit(c: char): bool = c >= '0' and c <= '9'
+  template isDigit(c: char): bool =
+    c >= '0' and c <= '9'
 
-  result = tspart[0].isDigit and tspart[1].isDigit and tspart[2].isDigit and tspart[3].isDigit and  # YYYY
-           tspart[4] == '-' and
-           tspart[5].isDigit and tspart[6].isDigit and  # MM
-           tspart[7] == '-' and
-           tspart[8].isDigit and tspart[9].isDigit and  # DD
-           tspart[10] == 'T' and
-           tspart[11].isDigit and tspart[12].isDigit and  # HH
-           tspart[13].isDigit and tspart[14].isDigit and  # MM
-           tspart[15].isDigit and tspart[16].isDigit and  # SS
-           tspart[17] == 'Z'
+  result =
+    tspart[0].isDigit and tspart[1].isDigit and tspart[2].isDigit and tspart[3].isDigit and
+      # YYYY
+    tspart[4] == '-' and tspart[5].isDigit and tspart[6].isDigit and # MM
+    tspart[7] == '-' and tspart[8].isDigit and tspart[9].isDigit and # DD
+    tspart[10] == 'T' and tspart[11].isDigit and tspart[12].isDigit and # HH
+    tspart[13].isDigit and tspart[14].isDigit and # MM
+    tspart[15].isDigit and tspart[16].isDigit and # SS
+    tspart[17] == 'Z'
 
 proc formatSnapshotName*(timestamp: DateTime): string =
   ## Format a snapshot name from timestamp
@@ -61,12 +61,15 @@ proc formatSnapshotName*(): string =
 proc parseSnapshotTimestamp*(name: string): YabbResult[DateTime] =
   ## Parse timestamp from snapshot name
   if not name.startsWith(SnapshotPrefix):
-    return err(yabbErr(ecInvalidVar, "SNAPSHOT", "Invalid snapshot name format: " & name))
-  let tsStr = name[SnapshotPrefix.len..^1]
+    return
+      err(yabbErr(ecInvalidVar, "SNAPSHOT", "Invalid snapshot name format: " & name))
+  let tsStr = name[SnapshotPrefix.len ..^ 1]
   try:
     ok(parse(tsStr, "yyyy-MM-dd'T'HHmmss'Z'", utc()))
   except TimeParseError:
-    err(yabbErr(ecInvalidVar, "SNAPSHOT", "Invalid timestamp in snapshot name: " & name))
+    err(
+      yabbErr(ecInvalidVar, "SNAPSHOT", "Invalid timestamp in snapshot name: " & name)
+    )
 
 proc getLastSnapshot*(): Opt[string] =
   ## Read last snapshot path from tracking file
@@ -97,26 +100,28 @@ proc saveLastSnapshot*(path: string, dryRun: bool): YabbResult[void] =
     ok()
   except OSError as e:
     # Clean up temp file on failure
-    try: removeFile(tempPath)
-    except OSError: discard
+    try:
+      removeFile(tempPath)
+    except OSError:
+      discard
     err(btrfsError("Failed to update last snapshot file: " & e.msg))
   except IOError as e:
     # Clean up temp file on failure (writeFile can raise IOError)
-    try: removeFile(tempPath)
-    except OSError: discard
+    try:
+      removeFile(tempPath)
+    except OSError:
+      discard
     err(btrfsError("Failed to update last snapshot file: " & e.msg))
 
 proc detectChanges*(
-  parentSnapshot: string,
-  currentSnapshot: string,
-  config: YabbConfig
+    parentSnapshot: string, currentSnapshot: string, config: YabbConfig
 ): YabbResult[bool] =
   ## Detect if there are changes between snapshots
   ## Returns err(ecNoChanges) if no changes detected
   if config.dryRun:
     debug "DRY_RUN: Would check for changes",
       parentSnapshot = parentSnapshot, currentSnapshot = currentSnapshot
-    return ok(true)  # Assume changes in dry run
+    return ok(true) # Assume changes in dry run
 
   # Validate input paths exist
   if not dirExists(parentSnapshot):
@@ -128,22 +133,28 @@ proc detectChanges*(
   let tempGuard = createTempFileGuard(TempSendPrefix, ".bin").valueOr:
     return err(error)
 
-  debug "Comparing snapshots", parentSnapshot = parentSnapshot, currentSnapshot = currentSnapshot
+  debug "Comparing snapshots",
+    parentSnapshot = parentSnapshot, currentSnapshot = currentSnapshot
 
   # Run btrfs send to temp file with retry
   let sendRes = retry(
     config.retryCount,
     config.retryDelay,
     proc(): YabbResult[int64] {.raises: [].} =
-      runBtrfsSendToFile(@["--quiet", "-p", parentSnapshot, currentSnapshot], tempGuard.path)
-    ,
-    "Generating incremental send stream for change detection"
+      runBtrfsSendToFile(
+        @["--quiet", "-p", parentSnapshot, currentSnapshot], tempGuard.path
+      ),
+    "Generating incremental send stream for change detection",
   )
 
   # Check result - empty file means no changes
   if sendRes.isErr:
     # Check if file exists but is empty (no changes case)
-    let fileSize = try: getFileSize(tempGuard.path) except OSError: -1
+    let fileSize =
+      try:
+        getFileSize(tempGuard.path)
+      except OSError:
+        -1
     if fileExists(tempGuard.path) and fileSize == 0:
       debug "No changes detected between snapshots"
       return err(noChangesError("No changes detected between snapshots"))
@@ -153,7 +164,11 @@ proc detectChanges*(
   let bytesWritten = sendRes.value
 
   # Empty stream means no changes
-  let finalSize = try: getFileSize(tempGuard.path) except OSError: -1
+  let finalSize =
+    try:
+      getFileSize(tempGuard.path)
+    except OSError:
+      -1
   if bytesWritten == 0 or finalSize == 0:
     debug "No changes detected between snapshots"
     return err(noChangesError("No changes detected between snapshots"))
@@ -162,8 +177,9 @@ proc detectChanges*(
   let validateRes = retry(
     config.retryCount,
     config.retryDelay,
-    proc(): YabbResult[void] {.raises: [].} = validateSendStream(tempGuard.path),
-    "Validating send stream integrity"
+    proc(): YabbResult[void] {.raises: [].} =
+      validateSendStream(tempGuard.path),
+    "Validating send stream integrity",
   )
   if validateRes.isErr:
     return err(btrfsError("Invalid send stream between snapshots"))
@@ -189,8 +205,9 @@ proc verifySnapshot*(path: string, config: YabbConfig): YabbResult[bool] =
   let showRes = retry(
     config.retryCount,
     config.retryDelay,
-    proc(): YabbResult[CommandResult] {.raises: [].} = runBtrfs(["subvolume", "show", path]),
-    "Verifying btrfs subvolume"
+    proc(): YabbResult[CommandResult] {.raises: [].} =
+      runBtrfs(["subvolume", "show", path]),
+    "Verifying btrfs subvolume",
   )
   if showRes.isErr or showRes.value.exitCode != 0:
     return err(btrfsError("Not a valid btrfs subvolume: " & path))
@@ -199,8 +216,9 @@ proc verifySnapshot*(path: string, config: YabbConfig): YabbResult[bool] =
   let roRes = retry(
     config.retryCount,
     config.retryDelay,
-    proc(): YabbResult[string] {.raises: [].} = getProperty(path, "ro"),
-    "Checking read-only property"
+    proc(): YabbResult[string] {.raises: [].} =
+      getProperty(path, "ro"),
+    "Checking read-only property",
   )
   if roRes.isErr or roRes.value != "true":
     return err(btrfsError("Snapshot is not read-only: " & path))
@@ -210,9 +228,11 @@ proc verifySnapshot*(path: string, config: YabbConfig): YabbResult[bool] =
     retry(
       config.retryCount,
       config.retryDelay,
-      proc(): YabbResult[string] {.raises: [].} = getProperty(path, prop),
-      "Checking property " & prop
+      proc(): YabbResult[string] {.raises: [].} =
+        getProperty(path, prop),
+      "Checking property " & prop,
     ).isErr
+
   let missingProp = RequiredProps.toSeq.findFirst(checkProp(it))
   if missingProp.isSome:
     return err(btrfsError("Missing required property: " & missingProp.get))
@@ -259,25 +279,24 @@ proc getFilesystemLabel(path: string): Opt[string] =
   let res = runCommand("btrfs", ["filesystem", "label", path])
   if res.isOk and res.value.exitCode == 0:
     let label = res.value.output.strip()
-    if label.len > 0: Opt.some(label) else: Opt.none(string)
+    if label.len > 0:
+      Opt.some(label)
+    else:
+      Opt.none(string)
   else:
     Opt.none(string)
 
-type
-  SnapshotDecision = object
-    ## Immutable snapshot planning result
-    parentSnapshot: Opt[string]
-    doFullSnapshot: bool
-    tempCompareSnapshot: string  # Path to temp snapshot for cleanup (empty if none)
-    noChangesDetected: bool
+type SnapshotDecision = object ## Immutable snapshot planning result
+  parentSnapshot: Opt[string]
+  doFullSnapshot: bool
+  tempCompareSnapshot: string # Path to temp snapshot for cleanup (empty if none)
+  noChangesDetected: bool
 
 # Forward declaration - defined after listSnapshots
 proc findLatestValidSnapshot*(snapshotDir: string): YabbResult[Opt[string]]
 
 proc determineSnapshotDecision(
-  config: YabbConfig,
-  srcDir: string,
-  snapshotDir: string
+    config: YabbConfig, srcDir: string, snapshotDir: string
 ): SnapshotDecision =
   ## Determine snapshot strategy based on previous snapshot and change detection
   ## Returns an immutable decision object with all necessary information
@@ -288,7 +307,7 @@ proc determineSnapshotDecision(
       parentSnapshot: Opt.none(string),
       doFullSnapshot: true,
       tempCompareSnapshot: "",
-      noChangesDetected: false
+      noChangesDetected: false,
     )
 
   # Try to find parent snapshot - first from tracking file, then by scanning directory
@@ -307,7 +326,7 @@ proc determineSnapshotDecision(
       parentSnapshot: Opt.none(string),
       doFullSnapshot: true,
       tempCompareSnapshot: "",
-      noChangesDetected: false
+      noChangesDetected: false,
     )
 
   # Verify candidate snapshot is valid
@@ -331,7 +350,7 @@ proc determineSnapshotDecision(
           parentSnapshot: Opt.none(string),
           doFullSnapshot: true,
           tempCompareSnapshot: "",
-          noChangesDetected: false
+          noChangesDetected: false,
         )
     else:
       warn "No alternative valid snapshot found, proceeding with full snapshot"
@@ -339,7 +358,7 @@ proc determineSnapshotDecision(
         parentSnapshot: Opt.none(string),
         doFullSnapshot: true,
         tempCompareSnapshot: "",
-        noChangesDetected: false
+        noChangesDetected: false,
       )
 
   # At this point, parentCandidate is verified and valid
@@ -351,9 +370,10 @@ proc determineSnapshotDecision(
     config.retryCount,
     config.retryDelay,
     proc(): YabbResult[void] {.raises: [].} =
-      operations.createSnapshot(srcDir, tempPath, readonly = true, dryRun = config.dryRun)
-    ,
-    "Creating temp snapshot for change detection"
+      operations.createSnapshot(
+        srcDir, tempPath, readonly = true, dryRun = config.dryRun
+      ),
+    "Creating temp snapshot for change detection",
   )
 
   if tempSnapRes.isErr:
@@ -362,7 +382,7 @@ proc determineSnapshotDecision(
       parentSnapshot: Opt.none(string),
       doFullSnapshot: true,
       tempCompareSnapshot: "",
-      noChangesDetected: false
+      noChangesDetected: false,
     )
 
   # Check for changes using readonly temp snapshot
@@ -372,7 +392,7 @@ proc determineSnapshotDecision(
       parentSnapshot: Opt.none(string),
       doFullSnapshot: true,
       tempCompareSnapshot: tempPath,
-      noChangesDetected: true
+      noChangesDetected: true,
     )
 
   if changesRes.isOk:
@@ -380,7 +400,7 @@ proc determineSnapshotDecision(
       parentSnapshot: lastSnapshot,
       doFullSnapshot: false,
       tempCompareSnapshot: tempPath,
-      noChangesDetected: false
+      noChangesDetected: false,
     )
 
   # Change detection failed for another reason - proceed with full
@@ -388,13 +408,11 @@ proc determineSnapshotDecision(
     parentSnapshot: Opt.none(string),
     doFullSnapshot: true,
     tempCompareSnapshot: tempPath,
-    noChangesDetected: false
+    noChangesDetected: false,
   )
 
 proc createBackupSnapshot*(
-  config: YabbConfig,
-  srcDir: string,
-  snapshotDir: string
+    config: YabbConfig, srcDir: string, snapshotDir: string
 ): YabbResult[Snapshot] =
   ## Create a new btrfs snapshot with full backup workflow
   let timestamp = now().utc
@@ -427,59 +445,78 @@ proc createBackupSnapshot*(
     config.retryCount,
     config.retryDelay,
     proc(): YabbResult[void] {.raises: [].} =
-      operations.createSnapshot(srcDir, snapshotPath, readonly = false, dryRun = config.dryRun)
-    ,
-    "Creating snapshot"
+      operations.createSnapshot(
+        srcDir, snapshotPath, readonly = false, dryRun = config.dryRun
+      ),
+    "Creating snapshot",
   )
   if createRes.isErr:
     return err(createRes.error)
 
   # Set metadata properties (must be done BEFORE making readonly)
-  let uuid = try: $genUUID()
-             except OSError, IOError: "unknown-" & $now().utc.toTime.toUnix
+  let uuid =
+    try:
+      $genUUID()
+    except OSError, IOError:
+      "unknown-" & $now().utc.toTime.toUnix
   let snapshotType = if doFullSnapshot: stFull else: stIncremental
-  let chainPos = if parentSnapshot.isSome: getChainPosition(parentSnapshot.get) + 1 else: 0
+  let chainPos =
+    if parentSnapshot.isSome:
+      getChainPosition(parentSnapshot.get) + 1
+    else:
+      0
 
   if not config.dryRun:
     # Get optional system info
     let kernelRes = runCommand("uname", ["-r"])
-    let kernel = if kernelRes.isOk and kernelRes.value.output.strip.len > 0:
-      Opt.some(kernelRes.value.output.strip())
-    else:
-      Opt.none(string)
-
-    let fsUuidRes = runCommand("btrfs", ["filesystem", "show", srcDir])
-    let fsUuid = if fsUuidRes.isOk:
-      let match = fsUuidRes.value.output.find("uuid: ")
-      if match >= 0:
-        Opt.some(fsUuidRes.value.output[match + 6 ..< min(match + 42, fsUuidRes.value.output.len)])
+    let kernel =
+      if kernelRes.isOk and kernelRes.value.output.strip.len > 0:
+        Opt.some(kernelRes.value.output.strip())
       else:
         Opt.none(string)
-    else:
-      Opt.none(string)
+
+    let fsUuidRes = runCommand("btrfs", ["filesystem", "show", srcDir])
+    let fsUuid =
+      if fsUuidRes.isOk:
+        let match = fsUuidRes.value.output.find("uuid: ")
+        if match >= 0:
+          Opt.some(
+            fsUuidRes.value.output[
+              match + 6 ..< min(match + 42, fsUuidRes.value.output.len)
+            ]
+          )
+        else:
+          Opt.none(string)
+      else:
+        Opt.none(string)
 
     # Get additional metadata
     let fsLabel = getFilesystemLabel(srcDir)
     let platform = Opt.some(getPlatform())
 
     # Set metadata - fail if this fails
-    setSnapshotMetadata(snapshotPath, SnapshotMetadata(
-      uuid: uuid,
-      timestamp: timestamp,
-      snapshotType: snapshotType,
-      parent: parentSnapshot,
-      chainPosition: chainPos,
-      chainLength: chainPos + 1,
-      compression: $config.compression.algo & ":" & $config.compression.level,
-      source: Opt.some(srcDir),
-      hostname: Opt.some(getHostname()),
-      kernel: kernel,
-      fsUuid: fsUuid,
-      fsLabel: fsLabel,
-      platform: platform,
-      destination: Opt.some($config.dstDir),
-      sizeBytes: 0
-    ), config.dryRun).isOkOr:
+
+    setSnapshotMetadata(
+      snapshotPath,
+      SnapshotMetadata(
+        uuid: uuid,
+        timestamp: timestamp,
+        snapshotType: snapshotType,
+        parent: parentSnapshot,
+        chainPosition: chainPos,
+        chainLength: chainPos + 1,
+        compression: $config.compression.algo & ":" & $config.compression.level,
+        source: Opt.some(srcDir),
+        hostname: Opt.some(getHostname()),
+        kernel: kernel,
+        fsUuid: fsUuid,
+        fsLabel: fsLabel,
+        platform: platform,
+        destination: Opt.some($config.dstDir),
+        sizeBytes: 0,
+      ),
+      config.dryRun,
+    ).isOkOr:
       return err(error)
 
     # Now make snapshot read-only for sending
@@ -488,11 +525,16 @@ proc createBackupSnapshot*(
 
   # Build send args - immutable conditional expression
   let isIncremental = parentSnapshot.isSome and not doFullSnapshot
-  let compressArgs = if config.compress: @["--compressed-data"] else: @[]
-  let sendArgs = if isIncremental:
-    compressArgs & @["-c", parentSnapshot.get, "-p", parentSnapshot.get, snapshotPath]
-  else:
-    compressArgs & @[snapshotPath]
+  let compressArgs =
+    if config.compress:
+      @["--compressed-data"]
+    else:
+      @[]
+  let sendArgs =
+    if isIncremental:
+      compressArgs & @["-c", parentSnapshot.get, "-p", parentSnapshot.get, snapshotPath]
+    else:
+      compressArgs & @[snapshotPath]
 
   if isIncremental:
     info "Performing incremental snapshot send from parent"
@@ -505,7 +547,7 @@ proc createBackupSnapshot*(
     config.retryDelay,
     proc(): YabbResult[void] {.raises: [].} =
       runBtrfsSendReceive(sendArgs, $config.dstDir, config.dryRun),
-    "Streaming snapshot to destination"
+    "Streaming snapshot to destination",
   )
   if streamRes.isErr:
     # Cleanup source snapshot on failure to prevent chain corruption
@@ -514,9 +556,12 @@ proc createBackupSnapshot*(
 
     # Don't silently fallback - user should investigate and use --force-full if needed
     if parentSnapshot.isSome and not doFullSnapshot:
-      return err(btrfsError(
-        "Incremental send failed. Parent may be corrupted. " &
-        "Use --force-full for full backup. Error: " & streamRes.error.msg))
+      return err(
+        btrfsError(
+          "Incremental send failed. Parent may be corrupted. " &
+            "Use --force-full for full backup. Error: " & streamRes.error.msg
+        )
+      )
     return err(streamRes.error)
 
   # Update chain length on all snapshots in the chain
@@ -533,7 +578,9 @@ proc createBackupSnapshot*(
   let destPath = $config.dstDir / snapshotName
   let destVerifyRes = verifySnapshot(destPath, config)
   if destVerifyRes.isErr:
-    return err(btrfsError("Destination snapshot verification failed: " & destVerifyRes.error.msg))
+    return err(
+      btrfsError("Destination snapshot verification failed: " & destVerifyRes.error.msg)
+    )
 
   # Update last snapshot tracking
   saveLastSnapshot(snapshotPath, config.dryRun).isOkOr:
@@ -541,15 +588,17 @@ proc createBackupSnapshot*(
 
   info "Snapshot created successfully", path = snapshotPath
 
-  ok(Snapshot(
-    path: snapshotPath,
-    name: snapshotName,
-    timestamp: timestamp,
-    snapshotType: snapshotType,
-    parent: parentSnapshot,
-    uuid: uuid,
-    verified: true
-  ))
+  ok(
+    Snapshot(
+      path: snapshotPath,
+      name: snapshotName,
+      timestamp: timestamp,
+      snapshotType: snapshotType,
+      parent: parentSnapshot,
+      uuid: uuid,
+      verified: true,
+    )
+  )
 
 proc tryParseSnapshot(path: string): Opt[Snapshot] =
   ## Try to parse a path as a valid snapshot, returning None if invalid
@@ -560,23 +609,28 @@ proc tryParseSnapshot(path: string): Opt[Snapshot] =
   if tsRes.isErr:
     debug "Skipping invalid snapshot", path = path, error = tsRes.error.msg
     return Opt.none(Snapshot)
-  Opt.some(Snapshot(
-    path: path,
-    name: name,
-    timestamp: tsRes.value,
-    snapshotType: stFull,  # Will be updated if we read metadata
-    parent: Opt.none(string),
-    uuid: "",
-    verified: false
-  ))
+  Opt.some(
+    Snapshot(
+      path: path,
+      name: name,
+      timestamp: tsRes.value,
+      snapshotType: stFull, # Will be updated if we read metadata
+      parent: Opt.none(string),
+      uuid: "",
+      verified: false,
+    )
+  )
 
 proc listSnapshots*(snapshotDir: string): YabbResult[seq[Snapshot]] =
   ## List all valid snapshots in directory
   if not dirExists(snapshotDir):
     return ok(newSeq[Snapshot]())
 
-  let entries = try: toSeq(walkDir(snapshotDir))
-    except OSError as e: return err(btrfsError("Failed to list snapshots: " & e.msg))
+  let entries =
+    try:
+      toSeq(walkDir(snapshotDir))
+    except OSError as e:
+      return err(btrfsError("Failed to list snapshots: " & e.msg))
 
   # Filter directories, parse as snapshots, keep valid ones
   let snapshots = entries
@@ -597,12 +651,16 @@ proc findLatestValidSnapshot*(snapshotDir: string): YabbResult[Opt[string]] =
     return ok(Opt.none(string))
 
   # Sort by timestamp descending (newest first) - immutable sorted copy
-  let sorted = snapshots.sorted(proc(a, b: Snapshot): int {.raises: [].} = cmp(b.timestamp, a.timestamp))
+  let sorted = snapshots.sorted(
+    proc(a, b: Snapshot): int {.raises: [].} =
+      cmp(b.timestamp, a.timestamp)
+  )
 
   # Find first snapshot with valid metadata
-  let found = sorted.findFirst(block:
-    let hasMeta = hasRequiredProperties(it.path)
-    hasMeta.isOk and hasMeta.value
+  let found = sorted.findFirst(
+    block:
+      let hasMeta = hasRequiredProperties(it.path)
+      hasMeta.isOk and hasMeta.value
   )
   if found.isSome:
     ok(Opt.some(found.get.path))

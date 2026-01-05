@@ -86,13 +86,7 @@ suite "CompressionLevel parsing":
 
 suite "RetentionPolicy defaults":
   test "default values are correct":
-    let policy = RetentionPolicy(
-      hourly: 24,
-      daily: 7,
-      weekly: 4,
-      monthly: 6,
-      yearly: 2
-    )
+    let policy = RetentionPolicy(hourly: 24, daily: 7, weekly: 4, monthly: 6, yearly: 2)
     check policy.hourly == 24
     check policy.daily == 7
     check policy.weekly == 4
@@ -113,11 +107,8 @@ suite "Percentage range type":
     check p == 50
 
   test "percentage can be used in OptimizationConfig":
-    let config = OptimizationConfig(
-      enabled: true,
-      balanceThreshold: 75,
-      defragThreshold: 50
-    )
+    let config =
+      OptimizationConfig(enabled: true, balanceThreshold: 75, defragThreshold: 50)
     check config.balanceThreshold == 75
     check config.defragThreshold == 50
 
@@ -130,7 +121,7 @@ suite "Snapshot type":
       snapshotType: stFull,
       parent: Opt.none(string),
       uuid: "test-uuid",
-      verified: false
+      verified: false,
     )
     check snap.parent.isNone
 
@@ -142,7 +133,7 @@ suite "Snapshot type":
       snapshotType: stIncremental,
       parent: Opt.some("/snapshots/backup.2024-01-01T120000Z"),
       uuid: "test-uuid-2",
-      verified: true
+      verified: true,
     )
     check snap.parent.isSome
     check snap.parent.get == "/snapshots/backup.2024-01-01T120000Z"

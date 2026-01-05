@@ -30,14 +30,13 @@ proc validateParentState*(meta: YabbResult[SnapshotMetadata]): ParentValidationS
   else:
     pvsValidParent
 
-type
-  ChainInfo* = object
-    snapshots*: seq[Snapshot]
-    fullSnapshotCount*: int
-    incrementalCount*: int
-    totalSize*: int64
-    chainLength*: int
-    isValid*: bool
+type ChainInfo* = object
+  snapshots*: seq[Snapshot]
+  fullSnapshotCount*: int
+  incrementalCount*: int
+  totalSize*: int64
+  chainLength*: int
+  isValid*: bool
 
 {.push raises: [].}
 
@@ -50,17 +49,22 @@ proc getChainInfo*(snapshotDir: string): YabbResult[ChainInfo] =
     return err(error)
 
   if snapshots.len == 0:
-    return ok(ChainInfo(
-      snapshots: @[],
-      fullSnapshotCount: 0,
-      incrementalCount: 0,
-      totalSize: 0,
-      chainLength: 0,
-      isValid: true
-    ))
+    return ok(
+      ChainInfo(
+        snapshots: @[],
+        fullSnapshotCount: 0,
+        incrementalCount: 0,
+        totalSize: 0,
+        chainLength: 0,
+        isValid: true,
+      )
+    )
 
   # Sort by timestamp (oldest first) - immutable sorted copy
-  let sorted = snapshots.sorted(proc(a, b: Snapshot): int {.raises: [].} = cmp(a.timestamp, b.timestamp))
+  let sorted = snapshots.sorted(
+    proc(a, b: Snapshot): int {.raises: [].} =
+      cmp(a.timestamp, b.timestamp)
+  )
 
   # Count full and incremental snapshots using fold pattern
   let (fullCount, incrCount) = sorted.foldl(
@@ -72,17 +76,20 @@ proc getChainInfo*(snapshotDir: string): YabbResult[ChainInfo] =
         else:
           (a[0], a[1] + 1)
       else:
-        a
-    , (0, 0))
+        a,
+    (0, 0),
+  )
 
-  ok(ChainInfo(
-    snapshots: sorted,
-    fullSnapshotCount: fullCount,
-    incrementalCount: incrCount,
-    totalSize: 0,  # Would need to sum snapshot sizes
-    chainLength: sorted.len,
-    isValid: fullCount > 0 or sorted.len == 0
-  ))
+  ok(
+    ChainInfo(
+      snapshots: sorted,
+      fullSnapshotCount: fullCount,
+      incrementalCount: incrCount,
+      totalSize: 0, # Would need to sum snapshot sizes
+      chainLength: sorted.len,
+      isValid: fullCount > 0 or sorted.len == 0,
+    )
+  )
 
 proc verifyChain*(snapshotDir: string, config: YabbConfig): YabbResult[bool] =
   ## Verify the integrity of the snapshot chain
@@ -102,17 +109,18 @@ proc verifyChain*(snapshotDir: string, config: YabbConfig): YabbResult[bool] =
     return err(btrfsError("Chain has no full snapshot"))
 
   # Verify each snapshot's parent exists - find first invalid
-  let invalidSnap = chainInfo.snapshots.findFirst(block:
-    let meta = getSnapshotMetadata(it.path)
-    let state = validateParentState(meta)
-    case state
-    of pvsMetadataError:
-      debug "Snapshot missing metadata, skipping parent check", path = it.path
-      false  # Not an error - skip this one
-    of pvsNoParentRef, pvsMissingParentPath:
-      true   # Invalid snapshot
-    of pvsFullSnapshot, pvsValidParent:
-      false  # Valid snapshot
+  let invalidSnap = chainInfo.snapshots.findFirst(
+    block:
+      let meta = getSnapshotMetadata(it.path)
+      let state = validateParentState(meta)
+      case state
+      of pvsMetadataError:
+        debug "Snapshot missing metadata, skipping parent check", path = it.path
+        false # Not an error - skip this one
+      of pvsNoParentRef, pvsMissingParentPath:
+        true # Invalid snapshot
+      of pvsFullSnapshot, pvsValidParent:
+        false # Valid snapshot
   )
   if invalidSnap.isSome:
     let snap = invalidSnap.get
@@ -136,22 +144,17 @@ proc verifyChain*(snapshotDir: string, config: YabbConfig): YabbResult[bool] =
       if actualDepth != storedPosition:
         depthMismatches += 1
         warn "Chain depth mismatch detected",
-          path = snap.path,
-          storedPosition = storedPosition,
-          actualDepth = actualDepth
+          path = snap.path, storedPosition = storedPosition, actualDepth = actualDepth
 
   if depthMismatches > 0:
     warn "Chain has metadata inconsistencies",
-      mismatches = depthMismatches,
-      total = chainInfo.snapshots.len
+      mismatches = depthMismatches, total = chainInfo.snapshots.len
 
   debug "Chain verification passed", snapshots = chainInfo.snapshots.len
   ok(true)
 
 proc shouldForceFullSnapshot*(
-  snapshotDir: string,
-  maxChainLength: Natural,
-  dryRun: bool = false
+    snapshotDir: string, maxChainLength: Natural, dryRun: bool = false
 ): YabbResult[bool] =
   ## Check if chain length exceeds maximum and a full snapshot should be forced
   ## Returns true if a full snapshot is required

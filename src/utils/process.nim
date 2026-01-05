@@ -17,20 +17,19 @@ import ../types
 import ../errors
 
 const
-  DefaultTimeout* = 120_000        ## 2 minutes - general commands
-  LongOperationTimeout* = 600_000_000  ## About a week- btrfs send/receive, scrub, balance
+  DefaultTimeout* = 120_000 ## 2 minutes - general commands
+  LongOperationTimeout* = 600_000_000 ## About a week- btrfs send/receive, scrub, balance
 
-type
-  CommandResult* = object
-    exitCode*: int
-    output*: string  # Combined stdout (stderr merged if poStdErrToStdOut)
+type CommandResult* = object
+  exitCode*: int
+  output*: string # Combined stdout (stderr merged if poStdErrToStdOut)
 
 proc runCommand*(
-  cmd: string,
-  args: openArray[string] = [],
-  workingDir: string = "",
-  timeout: int = DefaultTimeout,
-  dryRun: bool = false
+    cmd: string,
+    args: openArray[string] = [],
+    workingDir: string = "",
+    timeout: int = DefaultTimeout,
+    dryRun: bool = false,
 ): YabbResult[CommandResult] =
   ## Execute external command with timeout
   ## Respects DRY_RUN mode for commands that modify state
@@ -44,12 +43,17 @@ proc runCommand*(
     # Note: outputStream is available by default (no poParentStreams)
     let process = startProcess(
       cmd,
-      workingDir = if workingDir.len > 0: workingDir else: getCurrentDir(),
+      workingDir =
+        if workingDir.len > 0:
+          workingDir
+        else:
+          getCurrentDir(),
       args = @args,
-      options = {poUsePath, poStdErrToStdOut}
+      options = {poUsePath, poStdErrToStdOut},
     )
 
-    defer: process.close()
+    defer:
+      process.close()
 
     # Wait with timeout
     let finished = process.waitForExit(timeout)
@@ -62,18 +66,26 @@ proc runCommand*(
   except OSError as e:
     err(yabbErr(ecInvalidVar, "PROCESS", "Failed to run command " & cmd & ": " & e.msg))
   except IOError as e:
-    err(yabbErr(ecInvalidVar, "PROCESS", "IO error running command " & cmd & ": " & e.msg))
+    err(
+      yabbErr(ecInvalidVar, "PROCESS", "IO error running command " & cmd & ": " & e.msg)
+    )
   except ValueError as e:
-    err(yabbErr(ecInvalidVar, "PROCESS", "Invalid argument running command " & cmd & ": " & e.msg))
+    err(
+      yabbErr(
+        ecInvalidVar,
+        "PROCESS",
+        "Invalid argument running command " & cmd & ": " & e.msg,
+      )
+    )
 
-proc runBtrfs*(args: openArray[string], dryRun: bool = false): YabbResult[CommandResult] =
+proc runBtrfs*(
+    args: openArray[string], dryRun: bool = false
+): YabbResult[CommandResult] =
   ## Convenience wrapper for btrfs commands
   runCommand("btrfs", args, dryRun = dryRun)
 
 proc runBtrfsSendToFile*(
-  args: openArray[string],
-  tempFile: string,
-  dryRun: bool = false
+    args: openArray[string], tempFile: string, dryRun: bool = false
 ): YabbResult[int64] =
   ## Run btrfs send with -f flag for direct file output
   ## Used for change detection (small metadata diffs) - NOT for main backups
@@ -92,7 +104,8 @@ proc runBtrfsSendToFile*(
   if sendRes.isErr:
     return err(sendRes.error)
   if sendRes.value.exitCode != 0:
-    return err(btrfsError("btrfs send failed with exit code " & $sendRes.value.exitCode))
+    return
+      err(btrfsError("btrfs send failed with exit code " & $sendRes.value.exitCode))
 
   # Get file size
   try:
@@ -102,9 +115,7 @@ proc runBtrfsSendToFile*(
     err(btrfsError("Failed to get send stream size: " & e.msg))
 
 proc runBtrfsReceiveFromFile*(
-  args: openArray[string],
-  tempFile: string,
-  dryRun: bool = false
+    args: openArray[string], tempFile: string, dryRun: bool = false
 ): YabbResult[void] =
   ## Run btrfs receive -f tempfile (direct file read)
   ## Used internally - for main backups, use runBtrfsSendReceive() for streaming
@@ -123,7 +134,8 @@ proc runBtrfsReceiveFromFile*(
   if recvRes.isErr:
     return err(recvRes.error)
   if recvRes.value.exitCode != 0:
-    return err(btrfsError("btrfs receive failed with exit code " & $recvRes.value.exitCode))
+    return
+      err(btrfsError("btrfs receive failed with exit code " & $recvRes.value.exitCode))
 
   ok()
 
@@ -135,15 +147,13 @@ proc quoteShellArg(s: string): string =
   result = "'"
   for c in s:
     if c == '\'':
-      result.add("'\"'\"'")  # End quote, add escaped quote, start new quote
+      result.add("'\"'\"'") # End quote, add escaped quote, start new quote
     else:
       result.add(c)
   result.add("'")
 
 proc runBtrfsSendReceive*(
-  sendArgs: openArray[string],
-  destDir: string,
-  dryRun: bool = false
+    sendArgs: openArray[string], destDir: string, dryRun: bool = false
 ): YabbResult[void] =
   ## Stream btrfs send directly to btrfs receive via pipe with progress
   ## Uses: btrfs send [args] | pv -pterb | btrfs receive [destDir]

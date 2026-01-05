@@ -15,20 +15,23 @@
 import std/[terminal, exitprocs, posix, strutils]
 
 # Register cleanup on module load to restore terminal state
-addExitProc(proc() {.raises: [].} =
-  try: resetAttributes(stdout); resetAttributes(stderr)
-  except IOError: discard
+addExitProc(
+  proc() {.raises: [].} =
+    try:
+      resetAttributes(stdout)
+      resetAttributes(stderr)
+    except IOError:
+      discard
 )
 
-type
-  OutputLevel* = enum
-    olSuccess   ## Green checkmark - operation succeeded
-    olInfo      ## Cyan info icon - informational message
-    olError     ## Red X icon - error message
+type OutputLevel* = enum
+  olSuccess ## Green checkmark - operation succeeded
+  olInfo ## Cyan info icon - informational message
+  olError ## Red X icon - error message
 
 var
-  useColors* = true   ## Can be disabled for non-TTY or --json mode
-  useUnicode* = true  ## Can be disabled for terminals without unicode support
+  useColors* = true ## Can be disabled for non-TTY or --json mode
+  useUnicode* = true ## Can be disabled for terminals without unicode support
 
 proc isTerminal*(): bool =
   ## Check if stdout is a TTY (for color/interactive decisions)
@@ -43,13 +46,13 @@ proc getSymbol(level: OutputLevel): string =
   if useUnicode:
     case level
     of olSuccess: "✓"
-    of olInfo:    "ℹ"
-    of olError:   "✗"
+    of olInfo: "ℹ"
+    of olError: "✗"
   else:
     case level
     of olSuccess: "[OK]"
-    of olInfo:    "[i]"
-    of olError:   "[X]"
+    of olInfo: "[i]"
+    of olError: "[X]"
 
 proc colorWrite*(level: OutputLevel, msg: string) =
   ## Write colored message based on level (for user-facing output)
@@ -70,7 +73,7 @@ proc colorWrite*(level: OutputLevel, msg: string) =
     of olError:
       output.styledWriteLine(fgRed, symbol, " ", resetStyle, msg)
   except IOError:
-    discard  # Terminal output failure is non-fatal
+    discard # Terminal output failure is non-fatal
 
 proc userSuccess*(msg: string) =
   ## Display a success message with green checkmark

@@ -22,7 +22,8 @@ import utils/[lock, prereq, terminal, functional, progress, shutdown]
 
 type
   OutputFormat = enum
-    ofText, ofJson
+    ofText
+    ofJson
 
   OutputContext* = object
     ## Immutable context for output formatting - replaces global state
@@ -31,25 +32,25 @@ type
 
 func newOutputContext*(json: bool, isTty: bool): OutputContext =
   ## Create output context based on CLI flags and terminal detection
-  OutputContext(
-    format: if json: ofJson else: ofText,
-    colorEnabled: not json and isTty
-  )
+  OutputContext(format: if json: ofJson else: ofText, colorEnabled: not json and isTty)
 
-const LockTimeout* = 300  # 5 minutes
+const LockTimeout* = 300 # 5 minutes
 
 # Workflow progress steps for the main backup operation
-const BackupWorkflowSteps* = @[
-  WorkflowStep(name: "Load config", activeName: "Loading configuration..."),
-  WorkflowStep(name: "Check prerequisites", activeName: "Checking prerequisites..."),
-  WorkflowStep(name: "Acquire lock", activeName: "Acquiring lock..."),
-  WorkflowStep(name: "Validate config", activeName: "Validating configuration..."),
-  WorkflowStep(name: "Check space", activeName: "Checking filesystem space..."),
-  WorkflowStep(name: "Cleanup incomplete", activeName: "Cleaning up incomplete snapshots..."),
-  WorkflowStep(name: "Create snapshot", activeName: "Creating backup snapshot..."),
-  WorkflowStep(name: "Apply retention", activeName: "Applying retention policy..."),
-  WorkflowStep(name: "Finalize", activeName: "Finalizing backup..."),
-]
+const BackupWorkflowSteps* =
+  @[
+    WorkflowStep(name: "Load config", activeName: "Loading configuration..."),
+    WorkflowStep(name: "Check prerequisites", activeName: "Checking prerequisites..."),
+    WorkflowStep(name: "Acquire lock", activeName: "Acquiring lock..."),
+    WorkflowStep(name: "Validate config", activeName: "Validating configuration..."),
+    WorkflowStep(name: "Check space", activeName: "Checking filesystem space..."),
+    WorkflowStep(
+      name: "Cleanup incomplete", activeName: "Cleaning up incomplete snapshots..."
+    ),
+    WorkflowStep(name: "Create snapshot", activeName: "Creating backup snapshot..."),
+    WorkflowStep(name: "Apply retention", activeName: "Applying retention policy..."),
+    WorkflowStep(name: "Finalize", activeName: "Finalizing backup..."),
+  ]
 
 {.push raises: [].}
 
@@ -95,8 +96,12 @@ proc outputJson*(ctx: OutputContext, data: JsonNode) =
   except IOError:
     discard
 
-proc withSpinner*[T](ctx: OutputContext, msg: string, op: proc(): YabbResult[T] {.closure, raises: [].},
-                     successCodes: set[ExitCode] = {}): YabbResult[T] {.raises: [].} =
+proc withSpinner*[T](
+    ctx: OutputContext,
+    msg: string,
+    op: proc(): YabbResult[T] {.closure, raises: [].},
+    successCodes: set[ExitCode] = {},
+): YabbResult[T] {.raises: [].} =
   ## Execute operation with spinner feedback (only in text mode)
   ## successCodes: error codes that should show as success (e.g., ecNoChanges)
   if ctx.format == ofJson:
@@ -116,39 +121,53 @@ proc cleanupResources*(cfg: YabbConfig) =
   let cutoff = (now() - initDuration(minutes = 60)).toTime()
 
   # Cleanup temp files in /tmp - use functional filter then loop for side effects
-  let tmpEntries = try: toSeq(walkDir("/tmp")) except OSError: @[]
+  let tmpEntries =
+    try:
+      toSeq(walkDir("/tmp"))
+    except OSError:
+      @[]
   let oldTempFiles = tmpEntries
     .filterIt(it.kind == pcFile and extractFilename(it.path).startsWith("yabb"))
-    .filterIt(block:
-      try:
-        let info = getFileInfo(it.path)
-        info.lastWriteTime < cutoff
-      except OSError: false
-    )
-  oldTempFiles.applyIt:
-    try: removeFile(it.path)
-    except OSError: discard
-
-  # Cleanup old temp snapshots - use functional filter then loop for side effects
-  if cfg.snapshotDir.len > 0 and dirExists($cfg.snapshotDir):
-    let snapEntries = try: toSeq(walkDir($cfg.snapshotDir)) except OSError: @[]
-    let oldTempSnaps = snapEntries
-      .filterIt(it.kind == pcDir and extractFilename(it.path).startsWith("yabb-"))
-      .filterIt(block:
+    .filterIt(
+      block:
         try:
           let info = getFileInfo(it.path)
           info.lastWriteTime < cutoff
-        except OSError: false
+        except OSError:
+          false
+    )
+  oldTempFiles.applyIt:
+    try:
+      removeFile(it.path)
+    except OSError:
+      discard
+
+  # Cleanup old temp snapshots - use functional filter then loop for side effects
+  if cfg.snapshotDir.len > 0 and dirExists($cfg.snapshotDir):
+    let snapEntries =
+      try:
+        toSeq(walkDir($cfg.snapshotDir))
+      except OSError:
+        @[]
+    let oldTempSnaps = snapEntries
+      .filterIt(it.kind == pcDir and extractFilename(it.path).startsWith("yabb-"))
+      .filterIt(
+        block:
+          try:
+            let info = getFileInfo(it.path)
+            info.lastWriteTime < cutoff
+          except OSError:
+            false
       )
     oldTempSnaps.applyIt:
       discard deleteSubvolume(it.path, cfg.dryRun)
 
 proc run*(
-  configPath: string = DefaultConfigPath,
-  debug: bool = false,
-  dryRun: bool = false,
-  forceFull: bool = false,
-  json: bool = false
+    configPath: string = DefaultConfigPath,
+    debug: bool = false,
+    dryRun: bool = false,
+    forceFull: bool = false,
+    json: bool = false,
 ): int =
   ## Run BTRFS backup with optional incremental detection
   # Install signal handlers for graceful shutdown (SIGTERM, SIGINT, etc.)
@@ -174,22 +193,34 @@ proc run*(
     wp.renderStep(jsonMode)
 
   # Helper to log summary and return status
-  proc finish(cfg: YabbConfig, fileLock: sink FileLock, status: int, stats: ExecutionStats, success: bool): int =
+  proc finish(
+      cfg: YabbConfig,
+      fileLock: sink FileLock,
+      status: int,
+      stats: ExecutionStats,
+      success: bool,
+  ): int =
     release(fileLock)
     cleanupResources(cfg)
     wp.renderComplete(success, jsonMode)
     logSummary(status, stats)
     # Forward to journald if available
     if journalCtx.available:
-      let statusMsg = if status != 0 or stats.errors > 0:
-        "Backup completed with errors (status=" & $status & ", errors=" & $stats.errors & ")"
-      elif stats.warnings > 0:
-        "Backup completed with warnings (warnings=" & $stats.warnings & ")"
-      else:
-        "Backup completed successfully"
-      let priority = if status != 0 or stats.errors > 0: jpErr
-                     elif stats.warnings > 0: jpWarning
-                     else: jpInfo
+      let statusMsg =
+        if status != 0 or stats.errors > 0:
+          "Backup completed with errors (status=" & $status & ", errors=" & $stats.errors &
+            ")"
+        elif stats.warnings > 0:
+          "Backup completed with warnings (warnings=" & $stats.warnings & ")"
+        else:
+          "Backup completed successfully"
+      let priority =
+        if status != 0 or stats.errors > 0:
+          jpErr
+        elif stats.warnings > 0:
+          jpWarning
+        else:
+          jpInfo
       journalCtx.logToJournal(statusMsg, priority)
     status
 
@@ -248,25 +279,25 @@ proc run*(
     return finish(initialCfg, fileLock, error.code.ord, baseStats.withError(), false)
 
   # Check chain length and determine final forceFull value
-  let needsForceFull = if initialCfg.forceFull:
-    false  # Already forcing full, no need to check
-  else:
-    let needsFull = shouldForceFullSnapshot(
-      $initialCfg.snapshotDir,
-      initialCfg.chain.maxLength,
-      initialCfg.dryRun
-    ).valueOr:
-      warn "Chain length check failed, proceeding with incremental", msg = error.msg
-      false
-    if needsFull:
-      info "Forcing full snapshot due to chain length limit"
-    needsFull
+  let needsForceFull =
+    if initialCfg.forceFull:
+      false # Already forcing full, no need to check
+    else:
+      let needsFull = shouldForceFullSnapshot(
+        $initialCfg.snapshotDir, initialCfg.chain.maxLength, initialCfg.dryRun
+      ).valueOr:
+        warn "Chain length check failed, proceeding with incremental", msg = error.msg
+        false
+      if needsFull:
+        info "Forcing full snapshot due to chain length limit"
+      needsFull
 
   # Create final config with potentially updated forceFull
-  let cfg = if needsForceFull:
-    initialCfg.withOverrides(debug, dryRun, forceFull = true)
-  else:
-    initialCfg
+  let cfg =
+    if needsForceFull:
+      initialCfg.withOverrides(debug, dryRun, forceFull = true)
+    else:
+      initialCfg
 
   # Check for shutdown before cleanup
   checkShutdown().isOkOr:
@@ -275,8 +306,11 @@ proc run*(
 
   # Step 5: Cleanup incomplete snapshots (always run before backup)
   advanceProgress(5)
-  let cleanupRes = withSpinner(ctx, "Cleaning up incomplete snapshots", proc(): YabbResult[tuple[cleaned: int, failed: int]] =
-    cleanupIncompleteSnapshots($cfg.snapshotDir, cfg)
+  let cleanupRes = withSpinner(
+    ctx,
+    "Cleaning up incomplete snapshots",
+    proc(): YabbResult[tuple[cleaned: int, failed: int]] =
+      cleanupIncompleteSnapshots($cfg.snapshotDir, cfg),
   )
   if cleanupRes.isErr:
     # Cleanup failure is non-fatal - warn and continue
@@ -291,18 +325,24 @@ proc run*(
 
   # Step 6: Create snapshot
   advanceProgress(6)
-  let snapshotRes = withSpinner(ctx, "Creating backup snapshot", proc(): YabbResult[Snapshot] =
-    createBackupSnapshot(cfg, $cfg.srcDir, $cfg.snapshotDir)
-  , successCodes = {ecNoChanges, ecShutdown})
+  let snapshotRes = withSpinner(
+    ctx,
+    "Creating backup snapshot",
+    proc(): YabbResult[Snapshot] =
+      createBackupSnapshot(cfg, $cfg.srcDir, $cfg.snapshotDir),
+    successCodes = {ecNoChanges, ecShutdown},
+  )
   if snapshotRes.isErr:
     if snapshotRes.error.code == ecNoChanges:
       info "No changes detected, skipping backup"
-      return finish(cfg, fileLock, ecNoChanges.ord, baseStats, true)  # No changes is success
+      return
+        finish(cfg, fileLock, ecNoChanges.ord, baseStats, true) # No changes is success
     if snapshotRes.error.code == ecShutdown:
       info "Shutdown requested during snapshot"
       return finish(cfg, fileLock, ecShutdown.ord, baseStats, false)
     error "Snapshot creation failed", msg = snapshotRes.error.msg
-    return finish(cfg, fileLock, snapshotRes.error.code.ord, baseStats.withError(), false)
+    return
+      finish(cfg, fileLock, snapshotRes.error.code.ord, baseStats.withError(), false)
 
   info "Snapshot created successfully", path = snapshotRes.value.path
   let snapshotStats = baseStats.withSnapshotCreated().withOperation("snapshot created")
@@ -314,30 +354,37 @@ proc run*(
 
   # Step 7: Apply retention
   advanceProgress(7)
-  let retentionRes = withSpinner(ctx, "Applying retention policy", proc(): YabbResult[tuple[kept, deleted: int]] =
-    applyRetention($cfg.snapshotDir, cfg.retention, cfg)
+  let retentionRes = withSpinner(
+    ctx,
+    "Applying retention policy",
+    proc(): YabbResult[tuple[kept, deleted: int]] =
+      applyRetention($cfg.snapshotDir, cfg.retention, cfg),
   )
   if retentionRes.isErr:
     error "Retention policy failed", msg = retentionRes.error.msg
-    return finish(cfg, fileLock, retentionRes.error.code.ord, snapshotStats.withError(), false)
+    return finish(
+      cfg, fileLock, retentionRes.error.code.ord, snapshotStats.withError(), false
+    )
 
   let (kept, deleted) = retentionRes.value
   info "Retention applied", kept = kept, deleted = deleted
-  let retentionStats = snapshotStats.withSnapshotsDeleted(deleted).withOperation("retention applied")
+  let retentionStats =
+    snapshotStats.withSnapshotsDeleted(deleted).withOperation("retention applied")
 
   # Step 8: Finalize (includes optional storage optimization)
   advanceProgress(8)
 
   # Auto-optimize storage after retention if enabled and deletions occurred
-  let finalStats = if cfg.optimization.enabled and deleted > 0:
-    let optRes = optimizeStorage($cfg.snapshotDir, cfg)
-    if optRes.isErr:
-      warn "Storage optimization failed (non-fatal)", msg = optRes.error.msg
-      retentionStats.withWarning()
+  let finalStats =
+    if cfg.optimization.enabled and deleted > 0:
+      let optRes = optimizeStorage($cfg.snapshotDir, cfg)
+      if optRes.isErr:
+        warn "Storage optimization failed (non-fatal)", msg = optRes.error.msg
+        retentionStats.withWarning()
+      else:
+        retentionStats.withOperation("storage optimized")
     else:
-      retentionStats.withOperation("storage optimized")
-  else:
-    retentionStats
+      retentionStats
 
   finish(cfg, fileLock, ecSuccess.ord, finalStats, true)
 
@@ -345,10 +392,7 @@ proc run*(
 # Validate Subcommand
 # =============================================================================
 
-proc validate*(
-  configPath: string = DefaultConfigPath,
-  json: bool = false
-): int =
+proc validate*(configPath: string = DefaultConfigPath, json: bool = false): int =
   ## Validate configuration without running backup
   let ctx = newOutputContext(json, isTerminal())
   useColors = ctx.colorEnabled
@@ -371,32 +415,35 @@ proc validate*(
     return prereqResult.error.code.ord
 
   if ctx.format == ofJson:
-    outputJson(ctx, %*{
-      "status": "valid",
-      "config": {
-        "srcDir": $cfg.srcDir,
-        "dstDir": $cfg.dstDir,
-        "snapshotDir": $cfg.snapshotDir,
-        "compression": {
-          "algorithm": $cfg.compression.algo,
-          "level": cfg.compression.level
+    outputJson(
+      ctx,
+      %*{
+        "status": "valid",
+        "config": {
+          "srcDir": $cfg.srcDir,
+          "dstDir": $cfg.dstDir,
+          "snapshotDir": $cfg.snapshotDir,
+          "compression":
+            {"algorithm": $cfg.compression.algo, "level": cfg.compression.level},
+          "retention": {
+            "hourly": cfg.retention.hourly,
+            "daily": cfg.retention.daily,
+            "weekly": cfg.retention.weekly,
+            "monthly": cfg.retention.monthly,
+            "yearly": cfg.retention.yearly,
+          },
         },
-        "retention": {
-          "hourly": cfg.retention.hourly,
-          "daily": cfg.retention.daily,
-          "weekly": cfg.retention.weekly,
-          "monthly": cfg.retention.monthly,
-          "yearly": cfg.retention.yearly
-        }
-      }
-    })
+      },
+    )
   else:
     outputSuccess(ctx, "Configuration is valid")
     printHeader("Configuration")
     printKeyValue("Source", $cfg.srcDir)
     printKeyValue("Destination", $cfg.dstDir)
     printKeyValue("Snapshots", $cfg.snapshotDir)
-    printKeyValue("Compression", $cfg.compression.algo & " (level " & $cfg.compression.level & ")")
+    printKeyValue(
+      "Compression", $cfg.compression.algo & " (level " & $cfg.compression.level & ")"
+    )
     printSeparator()
     printHeader("Retention Policy")
     printKeyValue("Hourly", $cfg.retention.hourly)
@@ -411,10 +458,7 @@ proc validate*(
 # Status Subcommand
 # =============================================================================
 
-proc status*(
-  configPath: string = DefaultConfigPath,
-  json: bool = false
-): int =
+proc status*(configPath: string = DefaultConfigPath, json: bool = false): int =
   ## Show current snapshot status and disk usage
   let ctx = newOutputContext(json, isTerminal())
   useColors = ctx.colorEnabled
@@ -435,37 +479,38 @@ proc status*(
 
   if ctx.format == ofJson:
     # Build JSON array using mapIt
-    let snapshotsArray = snapshots.mapIt(%*{
-      "name": it.name,
-      "path": it.path,
-      "timestamp": $it.timestamp,
-      "type": $it.snapshotType
-    })
+    let snapshotsArray = snapshots.mapIt(
+      %*{
+        "name": it.name,
+        "path": it.path,
+        "timestamp": $it.timestamp,
+        "type": $it.snapshotType,
+      }
+    )
 
     # Build complete JSON object immutably
-    let baseData = %*{
-      "snapshotCount": snapshots.len,
-      "snapshots": %snapshotsArray
-    }
+    let baseData = %*{"snapshotCount": snapshots.len, "snapshots": %snapshotsArray}
 
     # Add optional usage data using functional composition
-    let withSrcUsage = if srcUsage.isOk:
-      let (used, available) = srcUsage.value
-      block:
-        let data = baseData.copy()
-        data["sourceUsage"] = %*{"usedBytes": used, "availableBytes": available}
-        data
-    else:
-      baseData
+    let withSrcUsage =
+      if srcUsage.isOk:
+        let (used, available) = srcUsage.value
+        block:
+          let data = baseData.copy()
+          data["sourceUsage"] = %*{"usedBytes": used, "availableBytes": available}
+          data
+      else:
+        baseData
 
-    let jsonData = if dstUsage.isOk:
-      let (used, available) = dstUsage.value
-      block:
-        let data = withSrcUsage.copy()
-        data["destUsage"] = %*{"usedBytes": used, "availableBytes": available}
-        data
-    else:
-      withSrcUsage
+    let jsonData =
+      if dstUsage.isOk:
+        let (used, available) = dstUsage.value
+        block:
+          let data = withSrcUsage.copy()
+          data["destUsage"] = %*{"usedBytes": used, "availableBytes": available}
+          data
+      else:
+        withSrcUsage
 
     outputJson(ctx, jsonData)
   else:
@@ -492,7 +537,7 @@ proc status*(
       printSeparator()
       printHeader("Recent Snapshots")
       let displayCount = min(5, snapshots.len)
-      snapshots[0..<displayCount].applyIt:
+      snapshots[0 ..< displayCount].applyIt:
         printKeyValue(it.name, $it.timestamp.format("yyyy-MM-dd HH:mm"))
 
   ecSuccess.ord
@@ -502,12 +547,12 @@ proc status*(
 # =============================================================================
 
 proc optimize*(
-  configPath: string = DefaultConfigPath,
-  dryRun: bool = false,
-  defrag: bool = true,
-  balance: bool = true,
-  scrub: bool = false,
-  json: bool = false
+    configPath: string = DefaultConfigPath,
+    dryRun: bool = false,
+    defrag: bool = true,
+    balance: bool = true,
+    scrub: bool = false,
+    json: bool = false,
 ): int =
   ## Manually run storage optimization operations
   let ctx = newOutputContext(json, isTerminal())
@@ -519,7 +564,8 @@ proc optimize*(
     return cfgResult.error.code.ord
 
   # Use immutable merge instead of mutation
-  let cfg = cfgResult.value.withOverrides(debug = false, dryRun = dryRun, forceFull = false)
+  let cfg =
+    cfgResult.value.withOverrides(debug = false, dryRun = dryRun, forceFull = false)
 
   # Validate config
   let valResult = validateConfig(cfg)
@@ -528,53 +574,73 @@ proc optimize*(
     return valResult.error.code.ord
 
   # Run operations and collect results with spinner feedback
-  let defragResult = if defrag:
-    let res = withSpinner(ctx, "Defragmenting " & $cfg.snapshotDir, proc(): YabbResult[void] =
-      defragment($cfg.snapshotDir, dryRun)
-    )
-    if res.isErr and ctx.format == ofJson:
-      outputError(ctx, "Defragmentation failed: " & res.error.msg)
-    Opt.some(res.isOk)
-  else:
-    Opt.none(bool)
+  let defragResult =
+    if defrag:
+      let res = withSpinner(
+        ctx,
+        "Defragmenting " & $cfg.snapshotDir,
+        proc(): YabbResult[void] =
+          defragment($cfg.snapshotDir, dryRun),
+      )
+      if res.isErr and ctx.format == ofJson:
+        outputError(ctx, "Defragmentation failed: " & res.error.msg)
+      Opt.some(res.isOk)
+    else:
+      Opt.none(bool)
 
-  let balanceResult = if balance:
-    let res = withSpinner(ctx, "Balancing " & $cfg.snapshotDir, proc(): YabbResult[void] =
-      storage.balance($cfg.snapshotDir, dryRun)
-    )
-    if res.isErr and ctx.format == ofJson:
-      outputError(ctx, "Balance failed: " & res.error.msg)
-    Opt.some(res.isOk)
-  else:
-    Opt.none(bool)
+  let balanceResult =
+    if balance:
+      let res = withSpinner(
+        ctx,
+        "Balancing " & $cfg.snapshotDir,
+        proc(): YabbResult[void] =
+          storage.balance($cfg.snapshotDir, dryRun),
+      )
+      if res.isErr and ctx.format == ofJson:
+        outputError(ctx, "Balance failed: " & res.error.msg)
+      Opt.some(res.isOk)
+    else:
+      Opt.none(bool)
 
-  let scrubResult = if scrub:
-    let res = withSpinner(ctx, "Scrubbing " & $cfg.snapshotDir, proc(): YabbResult[void] =
-      storage.scrub($cfg.snapshotDir, dryRun)
-    )
-    if res.isErr and ctx.format == ofJson:
-      outputError(ctx, "Scrub failed: " & res.error.msg)
-    Opt.some(res.isOk)
-  else:
-    Opt.none(bool)
+  let scrubResult =
+    if scrub:
+      let res = withSpinner(
+        ctx,
+        "Scrubbing " & $cfg.snapshotDir,
+        proc(): YabbResult[void] =
+          storage.scrub($cfg.snapshotDir, dryRun),
+      )
+      if res.isErr and ctx.format == ofJson:
+        outputError(ctx, "Scrub failed: " & res.error.msg)
+      Opt.some(res.isOk)
+    else:
+      Opt.none(bool)
 
   # Collect results and count - immutable pattern
-  let results = @[defragResult, balanceResult, scrubResult].filterIt(it.isSome).mapIt(it.get)
+  let results =
+    @[defragResult, balanceResult, scrubResult].filterIt(it.isSome).mapIt(it.get)
   let opCount = results.countIt(it)
   let errCount = results.countIt(not it)
 
   if ctx.format == ofJson:
-    outputJson(ctx, %*{
-      "status": if errCount == 0: "success" else: "partial",
-      "operationsCompleted": opCount,
-      "errors": errCount,
-      "dryRun": dryRun
-    })
+    outputJson(
+      ctx,
+      %*{
+        "status": if errCount == 0: "success" else: "partial",
+        "operationsCompleted": opCount,
+        "errors": errCount,
+        "dryRun": dryRun,
+      },
+    )
   else:
     if errCount == 0:
       outputSuccess(ctx, "Optimization completed: " & $opCount & " operations")
     else:
-      outputError(ctx, "Optimization completed with errors: " & $opCount & " ok, " & $errCount & " failed")
+      outputError(
+        ctx,
+        "Optimization completed with errors: " & $opCount & " ok, " & $errCount &
+          " failed",
+      )
 
   if errCount > 0: ecInvalidVar.ord else: ecSuccess.ord
 
@@ -583,9 +649,7 @@ proc optimize*(
 # =============================================================================
 
 proc health*(
-  configPath: string = DefaultConfigPath,
-  repair: bool = false,
-  json: bool = false
+    configPath: string = DefaultConfigPath, repair: bool = false, json: bool = false
 ): int =
   ## Check snapshot chain health and optionally repair issues
   let ctx = newOutputContext(json, isTerminal())
@@ -598,7 +662,8 @@ proc health*(
 
   # Use immutable merge instead of mutation
   # If not repairing, treat as dry run
-  let cfg = cfgResult.value.withOverrides(debug = false, dryRun = not repair, forceFull = false)
+  let cfg =
+    cfgResult.value.withOverrides(debug = false, dryRun = not repair, forceFull = false)
 
   # Validate config
   let valResult = validateConfig(cfg)
@@ -615,8 +680,11 @@ proc health*(
   let chainInfo = chainInfoRes.value
 
   # Diagnose chain issues
-  let diagRes = withSpinner(ctx, "Diagnosing chain health", proc(): YabbResult[seq[ChainDiagnostic]] =
-    diagnoseChain($cfg.snapshotDir)
+  let diagRes = withSpinner(
+    ctx,
+    "Diagnosing chain health",
+    proc(): YabbResult[seq[ChainDiagnostic]] =
+      diagnoseChain($cfg.snapshotDir),
   )
   if diagRes.isErr:
     outputError(ctx, "Failed to diagnose chain: " & diagRes.error.msg)
@@ -630,22 +698,22 @@ proc health*(
 
   if ctx.format == ofJson:
     # Build issues array using mapIt - immutable pattern
-    let issuesList = issues.mapIt(%*{
-      "path": it.path,
-      "issue": $it.issue,
-      "details": it.details
-    })
+    let issuesList =
+      issues.mapIt(%*{"path": it.path, "issue": $it.issue, "details": it.details})
 
-    outputJson(ctx, %*{
-      "status": if issues.len == 0 and not deviceErrors: "healthy" else: "issues",
-      "chainLength": chainInfo.chainLength,
-      "fullSnapshots": chainInfo.fullSnapshotCount,
-      "incrementalSnapshots": chainInfo.incrementalCount,
-      "isValid": chainInfo.isValid,
-      "deviceErrors": deviceErrors,
-      "issues": %issuesList,
-      "issueCount": issues.len
-    })
+    outputJson(
+      ctx,
+      %*{
+        "status": if issues.len == 0 and not deviceErrors: "healthy" else: "issues",
+        "chainLength": chainInfo.chainLength,
+        "fullSnapshots": chainInfo.fullSnapshotCount,
+        "incrementalSnapshots": chainInfo.incrementalCount,
+        "isValid": chainInfo.isValid,
+        "deviceErrors": deviceErrors,
+        "issues": %issuesList,
+        "issueCount": issues.len,
+      },
+    )
   else:
     printHeader("Chain Health Report")
     printKeyValue("Snapshot directory", $cfg.snapshotDir)
@@ -663,8 +731,10 @@ proc health*(
       issues.applyIt:
         printKeyValue("  " & extractFilename(it.path), $it.issue)
         if it.details.len > 0:
-          try: echo "    Details: " & it.details
-          except IOError: discard
+          try:
+            echo "    Details: " & it.details
+          except IOError:
+            discard
 
   # Attempt repair if requested
   if repair and issues.len > 0:
@@ -672,8 +742,13 @@ proc health*(
       printSeparator()
 
     # Use recoverChain() which does cleanup, chain rebuild, and metadata repair
-    let recoverRes = withSpinner(ctx, "Recovering chain (cleanup + rebuild + repair)", proc(): YabbResult[tuple[incompletesCleaned: int, orphansRemoved: int, metadataRepaired: int]] =
-      recoverChain($cfg.snapshotDir, cfg)
+    let recoverRes = withSpinner(
+      ctx,
+      "Recovering chain (cleanup + rebuild + repair)",
+      proc(): YabbResult[
+          tuple[incompletesCleaned: int, orphansRemoved: int, metadataRepaired: int]
+      ] =
+        recoverChain($cfg.snapshotDir, cfg),
     )
     if recoverRes.isErr:
       outputError(ctx, "Recovery failed: " & recoverRes.error.msg)
@@ -681,7 +756,14 @@ proc health*(
 
     let (cleaned, orphans, repaired) = recoverRes.value
     if ctx.format == ofJson:
-      outputJson(ctx, %*{"incompletesCleaned": cleaned, "orphansRemoved": orphans, "metadataRepaired": repaired})
+      outputJson(
+        ctx,
+        %*{
+          "incompletesCleaned": cleaned,
+          "orphansRemoved": orphans,
+          "metadataRepaired": repaired,
+        },
+      )
     else:
       if orphans > 0:
         outputSuccess(ctx, "Removed " & $orphans & " orphaned snapshot(s)")
@@ -690,8 +772,11 @@ proc health*(
       outputSuccess(ctx, "Repaired " & $repaired & " snapshot(s)")
 
     # Verify chain after repair
-    let verifyRes = withSpinner(ctx, "Verifying chain after repair", proc(): YabbResult[bool] =
-      verifyChain($cfg.snapshotDir, cfg)
+    let verifyRes = withSpinner(
+      ctx,
+      "Verifying chain after repair",
+      proc(): YabbResult[bool] =
+        verifyChain($cfg.snapshotDir, cfg),
     )
     if verifyRes.isErr:
       outputError(ctx, "Chain verification after repair failed: " & verifyRes.error.msg)
@@ -713,7 +798,8 @@ proc health*(
 # Main Entry Point
 # =============================================================================
 
-const YabbUsage = """YABB - Yet Another BTRFS Backup
+const YabbUsage =
+  """YABB - Yet Another BTRFS Backup
 A robust incremental backup tool using BTRFS snapshots and send/receive.
 
 Usage: yabb <command> [options]
@@ -728,7 +814,7 @@ Examples:
   yabb status           See current snapshots
   yabb health --repair  Fix chain issues
 
-Config: /etc/yabb.toml (override with --configPath)
+Config: /etc/yabb.toml or ~/.config/yabb/yabb.toml (override with --configPath)
 Run 'yabb <command> --help' for command details.
 """
 
@@ -736,39 +822,59 @@ proc main*(): int =
   try:
     dispatchMulti(
       ["multi", cmdName = "yabb", usage = YabbUsage],
-
-      [run, help = {
-        "configPath": "Path to TOML configuration file",
-        "debug": "Enable debug logging",
-        "dryRun": "Show what would be done without changes",
-        "forceFull": "Force full snapshot instead of incremental",
-        "json": "Output in JSON format"
-      }, short = {"debug": 'd', "dryRun": 'n', "forceFull": 'f', "json": 'j'}],
-
-      [validate, help = {
-        "configPath": "Path to TOML configuration file",
-        "json": "Output in JSON format"
-      }, short = {"json": 'j'}],
-
-      [status, help = {
-        "configPath": "Path to TOML configuration file",
-        "json": "Output in JSON format"
-      }, short = {"json": 'j'}],
-
-      [optimize, help = {
-        "configPath": "Path to TOML configuration file",
-        "dryRun": "Show what would be done without changes",
-        "defrag": "Run defragmentation (default: true)",
-        "balance": "Run balance operation (default: true)",
-        "scrub": "Run scrub operation (default: false)",
-        "json": "Output in JSON format"
-      }, short = {"dryRun": 'n', "json": 'j'}],
-
-      [health, help = {
-        "configPath": "Path to TOML configuration file",
-        "repair": "Attempt to repair chain issues",
-        "json": "Output in JSON format"
-      }, short = {"repair": 'r', "json": 'j'}]
+      [
+        run,
+        help = {
+          "configPath":
+            "Config file path (default: /etc/yabb.toml, fallback: ~/.config/yabb/yabb.toml)",
+          "debug": "Enable debug logging",
+          "dryRun": "Show what would be done without changes",
+          "forceFull": "Force full snapshot instead of incremental",
+          "json": "Output in JSON format",
+        },
+        short = {"debug": 'd', "dryRun": 'n', "forceFull": 'f', "json": 'j'},
+      ],
+      [
+        validate,
+        help = {
+          "configPath":
+            "Config file path (default: /etc/yabb.toml, fallback: ~/.config/yabb/yabb.toml)",
+          "json": "Output in JSON format",
+        },
+        short = {"json": 'j'},
+      ],
+      [
+        status,
+        help = {
+          "configPath":
+            "Config file path (default: /etc/yabb.toml, fallback: ~/.config/yabb/yabb.toml)",
+          "json": "Output in JSON format",
+        },
+        short = {"json": 'j'},
+      ],
+      [
+        optimize,
+        help = {
+          "configPath":
+            "Config file path (default: /etc/yabb.toml, fallback: ~/.config/yabb/yabb.toml)",
+          "dryRun": "Show what would be done without changes",
+          "defrag": "Run defragmentation (default: true)",
+          "balance": "Run balance operation (default: true)",
+          "scrub": "Run scrub operation (default: false)",
+          "json": "Output in JSON format",
+        },
+        short = {"dryRun": 'n', "json": 'j'},
+      ],
+      [
+        health,
+        help = {
+          "configPath":
+            "Config file path (default: /etc/yabb.toml, fallback: ~/.config/yabb/yabb.toml)",
+          "repair": "Attempt to repair chain issues",
+          "json": "Output in JSON format",
+        },
+        short = {"repair": 'r', "json": 'j'},
+      ],
     )
   except CatchableError:
     return ecInvalidArgument.ord

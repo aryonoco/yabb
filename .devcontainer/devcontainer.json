@@ -1,0 +1,326 @@
+{
+  "name": "yabb-dev",
+  "build": {
+    "dockerfile": "Dockerfile",
+    "args": {
+      "NIM_VERSION": "2.2.6"
+    }
+  },
+  "workspaceFolder": "/workspaces/yabb",
+
+  "containerUser": "vscode",
+  "remoteUser": "vscode",
+  "updateRemoteUserUID": true,
+  "shutdownAction": "stopContainer",
+
+  "initializeCommand": "for vol in yabb-vscode-server yabb-nimble-cache yabb-choosenim; do docker volume inspect \"$vol\" >/dev/null 2>&1 && docker run --rm -v \"$vol:/data\" alpine chown -R 1000:1000 /data 2>/dev/null; done || true",
+
+  "features": {
+    "ghcr.io/devcontainers/features/common-utils:2": {
+      "installZsh": true,
+      "installOhMyZsh": true,
+      "configureZshAsDefaultShell": true,
+      "username": "vscode",
+      "userUid": "1000",
+      "userGid": "1000",
+      "upgradePackages": true
+    },
+    "ghcr.io/devcontainers/features/git:1": {},
+    "ghcr.io/devcontainers/features/github-cli:1": {
+      "version": "latest"
+    },
+    "ghcr.io/devcontainers/features/docker-in-docker:2": {
+      "version": "latest",
+      "moby": false,
+      "dockerDashComposeVersion": "v2",
+      "installDockerBuildx": true
+    },
+    "ghcr.io/jsburckhardt/devcontainer-features/just:1": {},
+    "ghcr.io/schlich/devcontainer-features/powerlevel10k:1": {}
+  },
+
+  "mounts": [
+    {
+      "source": "yabb-nimble-cache",
+      "target": "/home/vscode/.nimble",
+      "type": "volume"
+    },
+    {
+      "source": "yabb-choosenim",
+      "target": "/home/vscode/.choosenim",
+      "type": "volume"
+    },
+    {
+      "source": "yabb-vscode-server",
+      "target": "/home/vscode/.vscode-server",
+      "type": "volume"
+    },
+    {
+      "source": "${localEnv:HOME}${localEnv:USERPROFILE}/.ssh",
+      "target": "/home/vscode/.ssh",
+      "type": "bind"
+    }
+  ],
+
+  "containerEnv": {
+    "NIM_VERSION": "2.2.6",
+    "CHOOSENIM_NO_ANALYTICS": "1",
+    "EDITOR": "code --wait",
+    "VISUAL": "code --wait"
+  },
+
+  "runArgs": [
+    "--init",
+    "--cap-drop=ALL",
+    "--cap-add=NET_BIND_SERVICE",
+    "--cap-add=DAC_OVERRIDE"
+  ],
+
+  "postCreateCommand": "bash .devcontainer/post-create.sh",
+
+  "customizations": {
+    "vscode": {
+      "extensions": [
+        "NimLang.nimlang",
+        "arnetheduck.vscode-nph",
+        "vadimcn.vscode-lldb",
+
+        "eamodio.gitlens",
+        "usernamehw.errorlens",
+        "streetsidesoftware.code-spell-checker",
+        "github.vscode-github-actions",
+
+        "EditorConfig.EditorConfig",
+        "tamasfe.even-better-toml",
+
+        "timonwong.shellcheck",
+        "foxundermoon.shell-format",
+
+        "redhat.vscode-yaml"
+      ],
+      "settings": {
+        "nim.lintOnSave": true,
+        "nim.buildOnSave": false,
+        "nim.buildCommand": "c",
+        "nim.project": ["src/yabb.nim"],
+        "nim.test-project": "tests/test_all.nim",
+
+        "nph.formatOnSave": true,
+
+        "editor.tabSize": 2,
+        "editor.insertSpaces": true,
+        "editor.formatOnSave": true,
+        "editor.rulers": [80, 120],
+        "editor.bracketPairColorization.enabled": true,
+        "editor.guides.bracketPairs": "active",
+
+        "files.trimTrailingWhitespace": true,
+        "files.insertFinalNewline": true,
+        "files.exclude": {
+          "**/nimcache": true,
+          "**/.nimble": true,
+          "**/bin": true
+        },
+        "files.associations": {
+          "*.nim": "nim",
+          "*.nims": "nim",
+          "*.nimble": "nim"
+        },
+
+        "[nim]": {
+          "editor.tabSize": 2,
+          "editor.formatOnSave": true,
+          "editor.defaultFormatter": "arnetheduck.vscode-nph"
+        },
+        "[toml]": {
+          "editor.defaultFormatter": "tamasfe.even-better-toml",
+          "editor.formatOnSave": true
+        },
+        "[shellscript]": {
+          "editor.defaultFormatter": "foxundermoon.shell-format",
+          "editor.tabSize": 2
+        },
+        "[markdown]": {
+          "editor.wordWrap": "on"
+        },
+        "[json]": {
+          "editor.tabSize": 2
+        },
+        "[yaml]": {
+          "editor.tabSize": 2
+        },
+
+        "cSpell.language": "en-GB",
+        "cSpell.enabledFileTypes": {
+          "nim": true,
+          "markdown": true,
+          "yaml": true,
+          "json": true,
+          "shellscript": true,
+          "toml": true
+        },
+
+        "terminal.integrated.defaultProfile.linux": "zsh",
+        "terminal.integrated.profiles.linux": {
+          "zsh": { "path": "/bin/zsh", "args": ["-l"] },
+          "bash": { "path": "/bin/bash" }
+        },
+
+        "errorLens.enabledDiagnosticLevels": ["error", "warning"],
+
+        "gitlens.currentLine.enabled": true,
+        "gitlens.codeLens.enabled": true
+      },
+      "launch": {
+        "configurations": [
+          {
+            "name": "Debug yabb",
+            "type": "lldb",
+            "request": "launch",
+            "program": "${workspaceFolder}/bin/yabb",
+            "args": ["--help"],
+            "cwd": "${workspaceFolder}",
+            "preLaunchTask": "nim: build project debug",
+            "initCommands": [
+              "command script import ~/.choosenim/toolchains/nim-${env:NIM_VERSION}/tools/debug/nimlldb.py"
+            ]
+          },
+          {
+            "name": "Debug current file",
+            "type": "lldb",
+            "request": "launch",
+            "program": "${workspaceFolder}/bin/${fileBasenameNoExtension}",
+            "args": [],
+            "cwd": "${workspaceFolder}",
+            "preLaunchTask": "nim: build debug",
+            "initCommands": [
+              "command script import ~/.choosenim/toolchains/nim-${env:NIM_VERSION}/tools/debug/nimlldb.py"
+            ]
+          },
+          {
+            "name": "Debug tests",
+            "type": "lldb",
+            "request": "launch",
+            "program": "${workspaceFolder}/bin/test_all",
+            "args": [],
+            "cwd": "${workspaceFolder}",
+            "preLaunchTask": "nim: build tests",
+            "initCommands": [
+              "command script import ~/.choosenim/toolchains/nim-${env:NIM_VERSION}/tools/debug/nimlldb.py"
+            ]
+          }
+        ]
+      },
+      "tasks": {
+        "version": "2.0.0",
+        "tasks": [
+          {
+            "label": "nim: build debug",
+            "type": "shell",
+            "command": "nim",
+            "args": ["c", "-g", "--debugger:native", "-o:bin/${fileBasenameNoExtension}", "${relativeFile}"],
+            "group": "build",
+            "problemMatcher": ["$nim"]
+          },
+          {
+            "label": "nim: build release",
+            "type": "shell",
+            "command": "nim",
+            "args": ["c", "-d:release", "-o:bin/${fileBasenameNoExtension}", "${relativeFile}"],
+            "group": "build",
+            "problemMatcher": ["$nim"]
+          },
+          {
+            "label": "nim: build project debug",
+            "type": "shell",
+            "command": "nim",
+            "args": ["c", "-g", "--debugger:native", "-o:bin/yabb", "src/yabb.nim"],
+            "group": {"kind": "build", "isDefault": true},
+            "problemMatcher": ["$nim"]
+          },
+          {
+            "label": "nim: build project release",
+            "type": "shell",
+            "command": "nim",
+            "args": ["c", "-d:release", "-d:lto", "-o:bin/yabb", "src/yabb.nim"],
+            "group": "build",
+            "problemMatcher": ["$nim"]
+          },
+          {
+            "label": "nim: build tests",
+            "type": "shell",
+            "command": "nim",
+            "args": ["c", "-g", "--debugger:native", "-o:bin/test_all", "tests/test_all.nim"],
+            "group": "build",
+            "problemMatcher": ["$nim"]
+          },
+          {
+            "label": "nph: format current file",
+            "type": "shell",
+            "command": "nph",
+            "args": ["${file}"],
+            "problemMatcher": []
+          },
+          {
+            "label": "nph: format all",
+            "type": "shell",
+            "command": "nph",
+            "args": ["src/", "tests/"],
+            "problemMatcher": []
+          },
+          {
+            "label": "nph: check",
+            "type": "shell",
+            "command": "nph",
+            "args": ["--check", "src/", "tests/"],
+            "problemMatcher": []
+          },
+          {
+            "label": "nimble: build",
+            "type": "shell",
+            "command": "nimble",
+            "args": ["build"],
+            "group": "build",
+            "problemMatcher": ["$nim"]
+          },
+          {
+            "label": "nimble: test",
+            "type": "shell",
+            "command": "nimble",
+            "args": ["test"],
+            "group": "test",
+            "problemMatcher": ["$nim"]
+          },
+          {
+            "label": "nimble: install",
+            "type": "shell",
+            "command": "nimble",
+            "args": ["install"],
+            "problemMatcher": []
+          },
+          {
+            "label": "nim: generate docs",
+            "type": "shell",
+            "command": "nim",
+            "args": ["doc", "--project", "--index:on", "--outdir:htmldocs", "src/yabb.nim"],
+            "problemMatcher": []
+          },
+          {
+            "label": "just: ci",
+            "type": "shell",
+            "command": "just",
+            "args": ["ci"],
+            "group": "test",
+            "problemMatcher": ["$nim"]
+          }
+        ]
+      }
+    }
+  },
+
+  "hostRequirements": {
+    "cpus": 2,
+    "memory": "4gb",
+    "storage": "16gb"
+  }
+}
