@@ -132,10 +132,12 @@ jobs:
 
       - name: Install project dependencies
         run: |
-          # Remove stale nim package that may have been installed
-          rm -rf ~/.nimble/pkgs2/nim-*
           nimble install -d --accept
           nimble setup
+          # Remove stale nim package that nimble installs as dependency.
+          # This forces nimble to use the nim from PATH (choosenim or source-built)
+          # instead of the outdated nim-2.0.8 from the nimble package registry.
+          rm -rf ~/.nimble/pkgs2/nim-*
 
       - name: Build static binary
         run: nimble ${{ matrix.nimble_task }}
