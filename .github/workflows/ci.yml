@@ -27,7 +27,8 @@ jobs:
             source versions.env
             echo "NIM_VERSION=$NIM_VERSION" >> $GITHUB_ENV
             echo "CHOOSENIM_VERSION=$CHOOSENIM_VERSION" >> $GITHUB_ENV
-            echo "Loaded versions: NIM=$NIM_VERSION, CHOOSENIM=$CHOOSENIM_VERSION"
+            echo "NPH_VERSION=$NPH_VERSION" >> $GITHUB_ENV
+            echo "Loaded versions: NIM=$NIM_VERSION, CHOOSENIM=$CHOOSENIM_VERSION, NPH=$NPH_VERSION"
           else
             echo "ERROR: versions.env not found"
             exit 1
@@ -41,7 +42,7 @@ jobs:
             ~/.choosenim
             ~/.nimble/bin
             ~/.nimble/pkgs2
-          key: nim-${{ runner.os }}-${{ env.NIM_VERSION }}-${{ hashFiles('*.nimble') }}
+          key: nim-${{ runner.os }}-${{ env.NIM_VERSION }}-${{ env.NPH_VERSION }}-${{ hashFiles('*.nimble') }}
           restore-keys: |
             nim-${{ runner.os }}-${{ env.NIM_VERSION }}-
             nim-${{ runner.os }}-
@@ -69,12 +70,15 @@ jobs:
       - name: Install nph formatter
         run: |
           if ! command -v nph &> /dev/null; then
-            # nph requires Nim compiler internals. Register choosenim's nim source
-            # as a develop package so nph builds against Nim 2.2.6 (not 2.0.8 from registry)
-            cd "$HOME/.choosenim/toolchains/nim-${{ env.NIM_VERSION }}"
-            nimble develop -y
+            # nph requires Nim 2.2.x compiler internals. Build from source using
+            # choosenim's Nim to avoid nimble resolving to old nim package (2.0.8)
+            git clone --depth 1 --branch "v${{ env.NPH_VERSION }}" https://github.com/arnetheduck/nph.git /tmp/nph
+            cd /tmp/nph
+            nimble setup
+            nim c -d:release -o:"$HOME/.nimble/bin/nph" src/nph.nim
             cd -
-            nimble install -y nph
+            rm -rf /tmp/nph
+            echo "nph installed: $(nph --version)"
           else
             echo "nph already installed (from cache)"
           fi

@@ -19,7 +19,7 @@ set dotenv-filename := "versions.env"
 # These fallbacks are only used if versions.env is missing
 NIM_VERSION := env_var_or_default("NIM_VERSION", "2.2.6")
 CHOOSENIM_VERSION := env_var_or_default("CHOOSENIM_VERSION", "0.8.16")
-NPH_VERSION := "latest"
+NPH_VERSION := env_var_or_default("NPH_VERSION", "0.6.2")
 NIMLANGSERVER_VERSION := "latest"
 
 # Extract current installed versions
@@ -56,6 +56,7 @@ versions:
     @echo "Target versions (from versions.env):"
     @echo "  NIM_VERSION:       {{NIM_VERSION}}"
     @echo "  CHOOSENIM_VERSION: {{CHOOSENIM_VERSION}}"
+    @echo "  NPH_VERSION:       {{NPH_VERSION}}"
 
 # =============================================================================
 # SETUP & INSTALLATION
@@ -65,11 +66,21 @@ versions:
 setup: _install-nim-tools install
     @echo "Setup complete! Run 'just versions' to verify."
 
-# Install Nim development tools via nimble
+# Install Nim development tools
 _install-nim-tools:
     @echo "Installing Nim development tools..."
+    # Install nimlangserver via nimble (works fine)
     nimble install -y nimlangserver
-    nimble install -y nph
+    # Build nph from source to avoid nimble's broken nim package resolution
+    @if ! command -v nph &> /dev/null || [ "$(nph --version 2>/dev/null | grep -oE '[0-9]+\.[0-9]+\.[0-9]+')" != "{{NPH_VERSION}}" ]; then \
+        echo "Installing nph v{{NPH_VERSION}} from source..."; \
+        rm -rf /tmp/nph; \
+        git clone --depth 1 --branch "v{{NPH_VERSION}}" https://github.com/arnetheduck/nph.git /tmp/nph; \
+        cd /tmp/nph && nimble setup && nim c -d:release -o:$HOME/.nimble/bin/nph src/nph.nim; \
+        rm -rf /tmp/nph; \
+    else \
+        echo "nph v{{NPH_VERSION}} already installed"; \
+    fi
     @echo "Nim tools installed"
 
 # Install project dependencies
