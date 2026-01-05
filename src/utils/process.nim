@@ -84,36 +84,6 @@ proc runBtrfs*(
   ## Convenience wrapper for btrfs commands
   runCommand("btrfs", args, dryRun = dryRun)
 
-proc runBtrfsSendToFile*(
-    args: openArray[string], tempFile: string, dryRun: bool = false
-): YabbResult[int64] =
-  ## Run btrfs send with -f flag for direct file output
-  ## Used for change detection (small metadata diffs) - NOT for main backups
-  ## For main backups, use runBtrfsSendReceive() for streaming
-  if dryRun:
-    debug "DRY_RUN: Would run btrfs send", args = $args
-    return ok(0i64)
-
-  # Build args with -f for direct file output (more robust than pipe)
-  # Use immutable filterIt + concatenation instead of mutable append
-  let sendArgs = @["send", "-f", tempFile] & toSeq(args).filterIt(it != "send")
-
-  debug "Running btrfs send", args = $sendArgs
-
-  let sendRes = runCommand("btrfs", sendArgs, timeout = LongOperationTimeout)
-  if sendRes.isErr:
-    return err(sendRes.error)
-  if sendRes.value.exitCode != 0:
-    return
-      err(btrfsError("btrfs send failed with exit code " & $sendRes.value.exitCode))
-
-  # Get file size
-  try:
-    let size = getFileSize(tempFile)
-    ok(size)
-  except OSError as e:
-    err(btrfsError("Failed to get send stream size: " & e.msg))
-
 proc runBtrfsReceiveFromFile*(
     args: openArray[string], tempFile: string, dryRun: bool = false
 ): YabbResult[void] =
@@ -184,14 +154,53 @@ proc runBtrfsSendReceive*(
   except OSError as e:
     err(btrfsError("Failed to execute streaming backup: " & e.msg))
 
-proc validateSendStream*(tempFile: string): YabbResult[void] =
-  ## Validate send stream using btrfs receive --dump
-  ## NOTE: btrfs receive --dump needs -f FILE to read from file (not positional arg)
-  let dumpRes = runCommand("btrfs", ["receive", "--quiet", "--dump", "-f", tempFile])
-  if dumpRes.isErr:
-    return err(dumpRes.error)
-  if dumpRes.value.exitCode != 0:
-    return err(btrfsError("Invalid send stream - btrfs receive --dump failed"))
-  ok()
+proc checkSendStreamHasContent*(
+    parentSnapshot: string, currentSnapshot: string, dryRun: bool = false
+): YabbResult[bool] =
+  ## Check if btrfs send produces meaningful content (i.e., there are changes)
+  ## Uses streaming with early termination via SIGPIPE - O(1) regardless of delta size
+  ## Returns ok(true) if changes exist, ok(false) if no changes
+  ##
+  ## This avoids writing terabyte-sized deltas to temp files.
+  ## head terminates btrfs send after reading StreamCheckBytes via SIGPIPE.
+  if dryRun:
+    debug "DRY_RUN: Would check for changes",
+      parent = parentSnapshot, current = currentSnapshot
+    return ok(true) # Assume changes in dry run
+
+  # Stream check with early termination via SIGPIPE
+  # head -c N reads max N bytes then sends SIGPIPE to terminate btrfs send
+  # btrfs send header alone is ~188 bytes; anything more means real changes
+  const
+    StreamCheckBytes = 512
+    NoChangesThreshold = 300
+
+  let shellCmd =
+    "btrfs send --quiet -p " &
+    quoteShellArg(parentSnapshot) & " " &
+    quoteShellArg(currentSnapshot) &
+    " 2>/dev/null | head -c " & $StreamCheckBytes & " | wc -c"
+
+  debug "Checking for changes (streaming)",
+    parent = parentSnapshot, current = currentSnapshot
+
+  try:
+    # Must run through shell for pipe/redirection support
+    let output = execProcess("/bin/sh", args = ["-c", shellCmd], options = {poUsePath})
+    let byteCount =
+      try:
+        parseInt(output.strip())
+      except ValueError:
+        -1
+
+    if byteCount < 0:
+      return err(btrfsError("Failed to parse change detection output"))
+
+    # Return whether changes were detected (immutable expression)
+    ok(byteCount >= NoChangesThreshold)
+  except OSError as e:
+    err(btrfsError("Change detection failed: " & e.msg))
+  except IOError as e:
+    err(btrfsError("Change detection IO error: " & e.msg))
 
 {.pop.}

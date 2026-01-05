@@ -14,7 +14,7 @@ import uuids
 import ../wrappers/log
 import ../types
 import ../errors
-import ../utils/[paths, retry, process, tempfile, functional]
+import ../utils/[paths, retry, process, functional]
 import operations
 import properties
 
@@ -116,12 +116,10 @@ proc saveLastSnapshot*(path: string, dryRun: bool): YabbResult[void] =
 proc detectChanges*(
     parentSnapshot: string, currentSnapshot: string, config: YabbConfig
 ): YabbResult[bool] =
-  ## Detect if there are changes between snapshots
+  ## Detect if there are changes between snapshots using streaming
   ## Returns err(ecNoChanges) if no changes detected
-  if config.dryRun:
-    debug "DRY_RUN: Would check for changes",
-      parentSnapshot = parentSnapshot, currentSnapshot = currentSnapshot
-    return ok(true) # Assume changes in dry run
+  ## Uses early termination via SIGPIPE - O(1) regardless of delta size
+  ## No temp files needed - works for terabyte-sized deltas
 
   # Validate input paths exist
   if not dirExists(parentSnapshot):
@@ -129,63 +127,24 @@ proc detectChanges*(
   if not dirExists(currentSnapshot):
     return err(btrfsError("Current snapshot does not exist: " & currentSnapshot))
 
-  # Create temp file for send output - RAII guard handles cleanup
-  let tempGuard = createTempFileGuard(TempSendPrefix, ".bin").valueOr:
-    return err(error)
-
   debug "Comparing snapshots",
     parentSnapshot = parentSnapshot, currentSnapshot = currentSnapshot
 
-  # Run btrfs send to temp file with retry
-  let sendRes = retry(
+  # Stream-based change detection with retry
+  let hasChangesRes = retry(
     config.retryCount,
     config.retryDelay,
-    proc(): YabbResult[int64] {.raises: [].} =
-      runBtrfsSendToFile(
-        @["--quiet", "-p", parentSnapshot, currentSnapshot], tempGuard.path
-      ),
-    "Generating incremental send stream for change detection",
+    proc(): YabbResult[bool] {.raises: [].} =
+      checkSendStreamHasContent(parentSnapshot, currentSnapshot, config.dryRun),
+    "Checking for changes (streaming)",
   )
 
-  # Check result - empty file means no changes
-  if sendRes.isErr:
-    # Check if file exists but is empty (no changes case)
-    let fileSize =
-      try:
-        getFileSize(tempGuard.path)
-      except OSError:
-        -1
-    if fileExists(tempGuard.path) and fileSize == 0:
-      debug "No changes detected between snapshots"
-      return err(noChangesError("No changes detected between snapshots"))
-    # Real error occurred
-    return err(btrfsError("Failed to compare snapshots: " & sendRes.error.msg))
+  let hasChanges = hasChangesRes.valueOr:
+    return err(error)
 
-  let bytesWritten = sendRes.value
-
-  # Empty stream means no changes
-  let finalSize =
-    try:
-      getFileSize(tempGuard.path)
-    except OSError:
-      -1
-  if bytesWritten == 0 or finalSize == 0:
+  if not hasChanges:
     debug "No changes detected between snapshots"
     return err(noChangesError("No changes detected between snapshots"))
-
-  # Verify send stream integrity
-  let validateRes = retry(
-    config.retryCount,
-    config.retryDelay,
-    proc(): YabbResult[void] {.raises: [].} =
-      validateSendStream(tempGuard.path),
-    "Validating send stream integrity",
-  )
-  if validateRes.isErr:
-    return err(btrfsError("Invalid send stream between snapshots"))
-
-  if config.debug:
-    debug "Detected changes", streamSize = bytesWritten
 
   info "Changes detected between snapshots"
   ok(true)
