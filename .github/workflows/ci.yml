@@ -84,7 +84,9 @@ jobs:
           fi
 
       - name: Install project dependencies
-        run: nimble install -d --accept
+        run: |
+          nimble install -d --accept
+          nimble setup  # Ensure nimble.paths is created for nim check
 
       - name: Check formatting
         run: just fmt-check
