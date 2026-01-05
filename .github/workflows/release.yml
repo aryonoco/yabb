@@ -52,6 +52,7 @@ jobs:
         if: steps.nim-cache.outputs.cache-hit != 'true'
         run: |
           curl https://nim-lang.org/choosenim/init.sh -sSf | sh -s -- -y
+          export PATH="$HOME/.nimble/bin:$PATH"
           echo "$HOME/.nimble/bin" >> $GITHUB_PATH
           choosenim ${{ env.NIM_VERSION }}
 
