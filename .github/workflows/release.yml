@@ -35,11 +35,34 @@ jobs:
             exit 1
           fi
 
-      - name: Setup Nim ${{ env.NIM_VERSION }}
-        uses: jiro4989/setup-nim-action@v2
+      - name: Cache Nim toolchain
+        uses: actions/cache@v4
+        id: nim-cache
         with:
-          nim-version: ${{ env.NIM_VERSION }}
-          repo-token: ${{ secrets.GITHUB_TOKEN }}
+          path: |
+            ~/.choosenim
+            ~/.nimble/bin
+            ~/.nimble/pkgs2
+          key: nim-${{ runner.os }}-${{ env.NIM_VERSION }}-${{ hashFiles('*.nimble') }}
+          restore-keys: |
+            nim-${{ runner.os }}-${{ env.NIM_VERSION }}-
+            nim-${{ runner.os }}-
+
+      - name: Install choosenim and Nim
+        if: steps.nim-cache.outputs.cache-hit != 'true'
+        run: |
+          curl https://nim-lang.org/choosenim/init.sh -sSf | sh -s -- -y
+          echo "$HOME/.nimble/bin" >> $GITHUB_PATH
+          choosenim ${{ env.NIM_VERSION }}
+
+      - name: Add Nim to PATH (cache hit)
+        if: steps.nim-cache.outputs.cache-hit == 'true'
+        run: echo "$HOME/.nimble/bin" >> $GITHUB_PATH
+
+      - name: Verify Nim version
+        run: |
+          nim --version
+          nimble --version
 
       - name: Install musl toolchain
         run: sudo apt-get update && sudo apt-get install -y musl-tools musl-dev
