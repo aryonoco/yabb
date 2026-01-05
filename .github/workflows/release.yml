@@ -83,7 +83,8 @@ jobs:
         with:
           path: |
             ~/nim-${{ env.NIM_VERSION }}
-            ~/.nimble
+            ~/.nimble/bin
+            ~/.nimble/pkgs2
           key: nim-arm64-${{ env.NIM_VERSION }}-${{ hashFiles('*.nimble') }}
           restore-keys: |
             nim-arm64-${{ env.NIM_VERSION }}-
@@ -132,15 +133,29 @@ jobs:
 
       - name: Install project dependencies
         run: |
+          # Pre-emptively remove any stale nim package from cache
+          rm -rf ~/.nimble/pkgs2/nim-*
           nimble install -d --accept
           nimble setup
-          # Remove stale nim package that nimble installs as dependency.
-          # This forces nimble to use the nim from PATH (choosenim or source-built)
-          # instead of the outdated nim-2.0.8 from the nimble package registry.
+          # Remove again in case nimble reinstalled nim from registry
+          # (nim should NOT be in nimble.lock, but defense-in-depth)
           rm -rf ~/.nimble/pkgs2/nim-*
 
       - name: Build static binary
-        run: nimble ${{ matrix.nimble_task }}
+        run: |
+          if [ "${{ matrix.arch }}" = "arm64" ]; then
+            # ARM64: Run nim directly to avoid nimble using stale nim from pkgs2
+            nim c -d:release --opt:speed --mm:orc -d:lto \
+              --passC:-march=armv8-a --passC:-mtune=cortex-a72 --passC:-flto \
+              --gcc.exe:musl-gcc --gcc.linkerexe:musl-gcc \
+              --passL:-static --passL:-flto \
+              -o:bin/yabb src/yabb.nim
+            strip -s bin/yabb
+            echo "Built: bin/yabb (static musl arm64)"
+          else
+            # x86_64: Use nimble task (choosenim nim works correctly)
+            nimble ${{ matrix.nimble_task }}
+          fi
 
       - name: Verify binary is static
         run: |

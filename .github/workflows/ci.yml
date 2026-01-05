@@ -85,11 +85,12 @@ jobs:
 
       - name: Install project dependencies
         run: |
+          # Pre-emptively remove any stale nim package from cache
+          rm -rf ~/.nimble/pkgs2/nim-*
           nimble install -d --accept
           nimble setup
-          # Remove stale nim package that nimble installs as dependency.
-          # This forces nimble to use the nim from PATH (choosenim-installed)
-          # instead of the outdated nim-2.0.8 from the nimble package registry.
+          # Remove again in case nimble reinstalled nim from registry
+          # (nim should NOT be in nimble.lock, but defense-in-depth)
           rm -rf ~/.nimble/pkgs2/nim-*
 
       - name: Check formatting

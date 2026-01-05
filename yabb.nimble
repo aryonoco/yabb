@@ -41,7 +41,7 @@ task test, "Run tests":
 task clean, "Clean build artifacts":
   exec "rm -rf bin/yabb bin/yabb-static nimcache/"
 
-task release, "Build optimized static musl binary for x86_64":
+task release, "Build static musl binary for x86_64":
   exec "nim c " & "-d:release " & "--opt:speed " & "--mm:orc " & "-d:lto " &
     "--passC:-march=x86-64-v2 " & "--passC:-mtune=skylake " & "--passC:-flto " &
     "--gcc.exe:musl-gcc " & "--gcc.linkerexe:musl-gcc " & "--passL:-static " &
@@ -49,7 +49,7 @@ task release, "Build optimized static musl binary for x86_64":
   exec "strip -s bin/yabb"
   echo "Built: bin/yabb (static musl x86_64)"
 
-task releaseArm64, "Build optimized static musl binary for ARM64":
+task releaseArm64, "Build static musl binary for ARM64":
   exec "nim c " & "-d:release " & "--opt:speed " & "--mm:orc " & "-d:lto " &
     "--passC:-march=armv8-a " & "--passC:-mtune=cortex-a72 " & "--passC:-flto " &
     "--gcc.exe:musl-gcc " & "--gcc.linkerexe:musl-gcc " & "--passL:-static " &
