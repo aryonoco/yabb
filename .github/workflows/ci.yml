@@ -85,8 +85,10 @@ jobs:
 
       - name: Install project dependencies
         run: |
+          # Remove stale nim package that nph build may have installed
+          rm -rf ~/.nimble/pkgs2/nim-*
           nimble install -d --accept
-          nimble setup  # Ensure nimble.paths is created for nim check
+          nimble setup
 
       - name: Check formatting
         run: just fmt-check
