@@ -26,9 +26,8 @@ jobs:
           if [ -f versions.env ]; then
             source versions.env
             echo "NIM_VERSION=$NIM_VERSION" >> $GITHUB_ENV
-            echo "CHOOSENIM_VERSION=$CHOOSENIM_VERSION" >> $GITHUB_ENV
             echo "NPH_VERSION=$NPH_VERSION" >> $GITHUB_ENV
-            echo "Loaded versions: NIM=$NIM_VERSION, CHOOSENIM=$CHOOSENIM_VERSION, NPH=$NPH_VERSION"
+            echo "Loaded versions: NIM=$NIM_VERSION, NPH=$NPH_VERSION"
           else
             echo "ERROR: versions.env not found"
             exit 1
@@ -39,25 +38,33 @@ jobs:
         id: nim-cache
         with:
           path: |
-            ~/.choosenim
+            ~/nim-${{ env.NIM_VERSION }}
             ~/.nimble/bin
             ~/.nimble/pkgs2
-          key: nim-${{ runner.os }}-${{ env.NIM_VERSION }}-${{ env.NPH_VERSION }}-${{ hashFiles('*.nimble') }}
+          key: nim-${{ runner.os }}-${{ runner.arch }}-${{ env.NIM_VERSION }}-${{ env.NPH_VERSION }}-${{ hashFiles('*.nimble') }}
           restore-keys: |
-            nim-${{ runner.os }}-${{ env.NIM_VERSION }}-
-            nim-${{ runner.os }}-
+            nim-${{ runner.os }}-${{ runner.arch }}-${{ env.NIM_VERSION }}-
 
-      - name: Install choosenim and Nim
+      - name: Install Nim from source
         if: steps.nim-cache.outputs.cache-hit != 'true'
         run: |
-          curl https://nim-lang.org/choosenim/init.sh -sSf | sh -s -- -y
-          export PATH="$HOME/.nimble/bin:$PATH"
-          echo "$HOME/.nimble/bin" >> $GITHUB_PATH
-          choosenim ${{ env.NIM_VERSION }}
+          cd ~
+          echo "Installing Nim ${{ env.NIM_VERSION }} from source..."
+          curl -LO "https://nim-lang.org/download/nim-${{ env.NIM_VERSION }}.tar.xz"
+          tar xf "nim-${{ env.NIM_VERSION }}.tar.xz"
+          cd "nim-${{ env.NIM_VERSION }}"
+          sh build.sh
+          ./bin/nim c -d:release koch
+          ./koch boot -d:release
+          ./koch nimble
+          cd ..
+          rm -f "nim-${{ env.NIM_VERSION }}.tar.xz"
+          echo "Nim ${{ env.NIM_VERSION }} installed successfully"
 
-      - name: Add Nim to PATH (cache hit)
-        if: steps.nim-cache.outputs.cache-hit == 'true'
-        run: echo "$HOME/.nimble/bin" >> $GITHUB_PATH
+      - name: Add Nim to PATH
+        run: |
+          echo "$HOME/nim-${{ env.NIM_VERSION }}/bin" >> $GITHUB_PATH
+          echo "$HOME/.nimble/bin" >> $GITHUB_PATH
 
       - name: Verify Nim version
         run: |

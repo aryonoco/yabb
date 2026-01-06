@@ -15,10 +15,8 @@ set dotenv-filename := "versions.env"
 # =============================================================================
 
 # Tool versions loaded from versions.env
-# NIM_VERSION and CHOOSENIM_VERSION are set in versions.env
 # These fallbacks are only used if versions.env is missing
 NIM_VERSION := env_var_or_default("NIM_VERSION", "2.2.6")
-CHOOSENIM_VERSION := env_var_or_default("CHOOSENIM_VERSION", "0.8.16")
 NPH_VERSION := env_var_or_default("NPH_VERSION", "0.6.2")
 NIMLANGSERVER_VERSION := "latest"
 
@@ -54,9 +52,8 @@ versions:
     @echo "  just:          $(just --version)"
     @echo ""
     @echo "Target versions (from versions.env):"
-    @echo "  NIM_VERSION:       {{NIM_VERSION}}"
-    @echo "  CHOOSENIM_VERSION: {{CHOOSENIM_VERSION}}"
-    @echo "  NPH_VERSION:       {{NPH_VERSION}}"
+    @echo "  NIM_VERSION: {{NIM_VERSION}}"
+    @echo "  NPH_VERSION: {{NPH_VERSION}}"
 
 # =============================================================================
 # SETUP & INSTALLATION
@@ -256,14 +253,14 @@ debug-info:
     @echo "Nim Debug Configuration:"
     @echo "========================"
     @echo "Nim version:     $(nim --version | head -1)"
-    @echo "Pretty-printer:  ~/.choosenim/toolchains/nim-{{NIM_VERSION}}/tools/debug/nimlldb.py"
+    @echo "Pretty-printer:  ~/nim-{{NIM_VERSION}}/tools/debug/nimlldb.py"
     @echo ""
-    @if [ -f ~/.choosenim/toolchains/nim-{{NIM_VERSION}}/tools/debug/nimlldb.py ]; then \
+    @if [ -f ~/nim-{{NIM_VERSION}}/tools/debug/nimlldb.py ]; then \
         echo "LLDB pretty-printer found"; \
     else \
         echo "LLDB pretty-printer NOT found"; \
     fi
-    @if [ -f ~/.choosenim/toolchains/nim-{{NIM_VERSION}}/tools/debug/nim-gdb.py ]; then \
+    @if [ -f ~/nim-{{NIM_VERSION}}/tools/debug/nim-gdb.py ]; then \
         echo "GDB pretty-printer found"; \
     else \
         echo "GDB pretty-printer NOT found"; \

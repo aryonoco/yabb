@@ -22,10 +22,12 @@ jobs:
         include:
           - arch: x86_64
             runner: ubuntu-latest
-            nimble_task: release
+            march: x86-64-v2
+            mtune: skylake
           - arch: arm64
             runner: ubuntu-24.04-arm
-            nimble_task: releaseArm64
+            march: armv8-a
+            mtune: cortex-a72
 
     steps:
       - name: Checkout code
@@ -37,99 +39,54 @@ jobs:
           if [ -f versions.env ]; then
             source versions.env
             echo "NIM_VERSION=$NIM_VERSION" >> $GITHUB_ENV
-            echo "CHOOSENIM_VERSION=$CHOOSENIM_VERSION" >> $GITHUB_ENV
-            echo "Loaded versions: NIM=$NIM_VERSION, CHOOSENIM=$CHOOSENIM_VERSION"
+            echo "Loaded versions: NIM=$NIM_VERSION"
           else
             echo "ERROR: versions.env not found"
             exit 1
           fi
 
-      # ============================================================
-      # x86_64: Use choosenim (fast, prebuilt binaries)
-      # ============================================================
-      - name: Cache Nim toolchain (x86_64)
-        if: matrix.arch == 'x86_64'
+      - name: Cache Nim toolchain
         uses: actions/cache@v4
-        id: nim-cache-x86
-        with:
-          path: |
-            ~/.choosenim
-            ~/.nimble/bin
-            ~/.nimble/pkgs2
-          key: nim-x86_64-${{ env.NIM_VERSION }}-${{ hashFiles('*.nimble') }}
-          restore-keys: |
-            nim-x86_64-${{ env.NIM_VERSION }}-
-            nim-x86_64-
-
-      - name: Install Nim via choosenim (x86_64)
-        if: matrix.arch == 'x86_64' && steps.nim-cache-x86.outputs.cache-hit != 'true'
-        run: |
-          curl https://nim-lang.org/choosenim/init.sh -sSf | sh -s -- -y
-          export PATH="$HOME/.nimble/bin:$PATH"
-          echo "$HOME/.nimble/bin" >> $GITHUB_PATH
-          choosenim ${{ env.NIM_VERSION }}
-
-      - name: Add Nim to PATH (x86_64 cache hit)
-        if: matrix.arch == 'x86_64' && steps.nim-cache-x86.outputs.cache-hit == 'true'
-        run: echo "$HOME/.nimble/bin" >> $GITHUB_PATH
-
-      # ============================================================
-      # ARM64: Build from source (choosenim not supported on ARM64)
-      # ============================================================
-      - name: Cache Nim toolchain (arm64)
-        if: matrix.arch == 'arm64'
-        uses: actions/cache@v4
-        id: nim-cache-arm64
+        id: nim-cache
         with:
           path: |
             ~/nim-${{ env.NIM_VERSION }}
             ~/.nimble/bin
             ~/.nimble/pkgs2
-          key: nim-arm64-${{ env.NIM_VERSION }}-${{ hashFiles('*.nimble') }}
+          key: nim-${{ matrix.arch }}-${{ env.NIM_VERSION }}-${{ hashFiles('*.nimble') }}
           restore-keys: |
-            nim-arm64-${{ env.NIM_VERSION }}-
-            nim-arm64-
+            nim-${{ matrix.arch }}-${{ env.NIM_VERSION }}-
 
-      - name: Install build dependencies (arm64)
-        if: matrix.arch == 'arm64'
+      - name: Install build dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y build-essential xz-utils
+          sudo apt-get install -y build-essential xz-utils musl-tools musl-dev
 
-      - name: Build Nim from source (arm64)
-        if: matrix.arch == 'arm64' && steps.nim-cache-arm64.outputs.cache-hit != 'true'
+      - name: Build Nim from source
+        if: steps.nim-cache.outputs.cache-hit != 'true'
         run: |
           cd ~
-          echo "Downloading Nim ${{ env.NIM_VERSION }} source..."
+          echo "Installing Nim ${{ env.NIM_VERSION }} from source..."
           curl -LO "https://nim-lang.org/download/nim-${{ env.NIM_VERSION }}.tar.xz"
           tar xf "nim-${{ env.NIM_VERSION }}.tar.xz"
           cd "nim-${{ env.NIM_VERSION }}"
-
-          echo "Building Nim (this takes ~3-5 minutes)..."
           sh build.sh
           ./bin/nim c -d:release koch
           ./koch boot -d:release
           ./koch nimble
+          cd ..
+          rm -f "nim-${{ env.NIM_VERSION }}.tar.xz"
+          echo "Nim ${{ env.NIM_VERSION }} installed successfully"
 
-          echo "Nim built successfully"
-          ./bin/nim --version
-
-      - name: Add Nim to PATH (arm64)
-        if: matrix.arch == 'arm64'
+      - name: Add Nim to PATH
         run: |
           echo "$HOME/nim-${{ env.NIM_VERSION }}/bin" >> $GITHUB_PATH
           echo "$HOME/.nimble/bin" >> $GITHUB_PATH
 
-      # ============================================================
-      # Common steps (both architectures)
-      # ============================================================
       - name: Verify Nim version
         run: |
           nim --version
           nimble --version
-
-      - name: Install musl toolchain
-        run: sudo apt-get update && sudo apt-get install -y musl-tools musl-dev
 
       - name: Install project dependencies
         run: |
@@ -138,24 +95,19 @@ jobs:
           nimble install -d --accept
           nimble setup
           # Remove again in case nimble reinstalled nim from registry
-          # (nim should NOT be in nimble.lock, but defense-in-depth)
           rm -rf ~/.nimble/pkgs2/nim-*
 
       - name: Build static binary
         run: |
-          if [ "${{ matrix.arch }}" = "arm64" ]; then
-            # ARM64: Run nim directly to avoid nimble using stale nim from pkgs2
-            nim c -d:release --opt:speed --mm:orc -d:lto \
-              --passC:-march=armv8-a --passC:-mtune=cortex-a72 --passC:-flto \
-              --gcc.exe:musl-gcc --gcc.linkerexe:musl-gcc \
-              --passL:-static --passL:-flto \
-              -o:bin/yabb src/yabb.nim
-            strip -s bin/yabb
-            echo "Built: bin/yabb (static musl arm64)"
-          else
-            # x86_64: Use nimble task (choosenim nim works correctly)
-            nimble ${{ matrix.nimble_task }}
-          fi
+          nim c -d:release --opt:speed --mm:orc -d:lto \
+            --passC:-march=${{ matrix.march }} \
+            --passC:-mtune=${{ matrix.mtune }} \
+            --passC:-flto \
+            --gcc.exe:musl-gcc --gcc.linkerexe:musl-gcc \
+            --passL:-static --passL:-flto \
+            -o:bin/yabb src/yabb.nim
+          strip -s bin/yabb
+          echo "Built: bin/yabb (static musl ${{ matrix.arch }})"
 
       - name: Verify binary is static
         run: |

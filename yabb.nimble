@@ -1,14 +1,14 @@
 # Package
 
-version = "0.3.0"
-author = "yabb"
+version = "0.4.0"
+author = "Aryan Ameri"
 description = "Yet Another BTRFS Backup"
 license = "MPL 2.0"
 srcDir = "src"
 binDir = "bin"
 bin = @["yabb"]
 
-# Strict type safety
+# Type safety
 # Note: strictCaseObjects and strictFuncs disabled due to external library compatibility
 # (chronicles, faststreams).
 switch("experimental", "strictDefs")

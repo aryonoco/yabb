@@ -1,6 +1,6 @@
 # =============================================================================
 # YABB Development Container
-# Nim 2.2.6+ development environment with modern tooling
+# Nim development environment with multi-arch support (AMD64 + ARM64)
 # =============================================================================
 
 FROM mcr.microsoft.com/devcontainers/base:debian-13
@@ -10,12 +10,10 @@ ENV DEBIAN_FRONTEND=noninteractive
 
 # Build arguments for version management
 ARG NIM_VERSION=2.2.6
-ARG CHOOSENIM_VERSION=0.8.16
 
 # Environment variables
 ENV NIM_VERSION=${NIM_VERSION}
-ENV CHOOSENIM_NO_ANALYTICS=1
-ENV PATH="/home/vscode/.nimble/bin:/home/vscode/.choosenim/toolchains/nim-${NIM_VERSION}/bin:${PATH}"
+ENV PATH="/home/vscode/nim-${NIM_VERSION}/bin:/home/vscode/.nimble/bin:${PATH}"
 
 # Install system dependencies
 RUN apt-get update && apt-get install -y --no-install-recommends \
@@ -55,10 +53,18 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 USER vscode
 WORKDIR /home/vscode
 
-# Install choosenim and Nim
-RUN curl https://nim-lang.org/choosenim/init.sh -sSf | sh -s -- -y \
-    && choosenim ${NIM_VERSION} \
-    && choosenim update self
+# Install Nim from source (works on both AMD64 and ARM64)
+RUN echo "Installing Nim ${NIM_VERSION} from source..." \
+    && curl -LO "https://nim-lang.org/download/nim-${NIM_VERSION}.tar.xz" \
+    && tar xf "nim-${NIM_VERSION}.tar.xz" \
+    && cd "nim-${NIM_VERSION}" \
+    && sh build.sh \
+    && ./bin/nim c -d:release koch \
+    && ./koch boot -d:release \
+    && ./koch nimble \
+    && cd .. \
+    && rm -f "nim-${NIM_VERSION}.tar.xz" \
+    && echo "Nim ${NIM_VERSION} installed successfully"
 
 # Verify installation
 RUN nim --version && nimble --version
@@ -68,5 +74,5 @@ USER root
 
 # Labels
 LABEL org.opencontainers.image.title="YABB Development Container"
-LABEL org.opencontainers.image.description="Nim 2.2.6+ development environment for YABB"
-LABEL org.opencontainers.image.version="1.0.0"
+LABEL org.opencontainers.image.description="Nim development environment for YABB (multi-arch)"
+LABEL org.opencontainers.image.version="1.1.0"
