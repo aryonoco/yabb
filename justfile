@@ -66,7 +66,10 @@ setup: _install-nim-tools install
 # Install Nim development tools
 _install-nim-tools:
     @echo "Installing Nim development tools..."
-    # Install nimlangserver via nimble (works fine)
+    # Kill any running nimlangserver to avoid "Text file busy" error
+    @pkill -9 nimlangserver 2>/dev/null || true
+    @sleep 1
+    # Install nimlangserver via nimble
     nimble install -y nimlangserver
     # Build nph from source to avoid nimble's broken nim package resolution
     @if ! command -v nph &> /dev/null || [ "$(nph --version 2>/dev/null | grep -oE '[0-9]+\.[0-9]+\.[0-9]+')" != "{{NPH_VERSION}}" ]; then \
