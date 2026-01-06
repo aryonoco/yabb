@@ -66,8 +66,11 @@ setup: _install-nim-tools install
 # Install Nim development tools
 _install-nim-tools:
     @echo "Installing Nim development tools..."
-    # Kill any running nimlangserver to avoid "Text file busy" error
+    # Kill any running nimlangserver and remove package to avoid "Text file busy" error
+    # VS Code may restart nimlangserver after pkill, so we also remove the package dir
     @pkill -9 nimlangserver 2>/dev/null || true
+    @nimble uninstall -y nimlangserver 2>/dev/null || true
+    @rm -rf ~/.nimble/pkgs2/nimlangserver-* 2>/dev/null || true
     @sleep 1
     # Install nimlangserver via nimble
     nimble install -y nimlangserver
