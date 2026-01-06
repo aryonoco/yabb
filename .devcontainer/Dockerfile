@@ -62,7 +62,7 @@ RUN echo "Installing Nim ${NIM_VERSION} from source..." \
     && ./bin/nim c -d:release koch \
     && ./koch boot -d:release \
     && ./koch nimble \
-    && ./koch testament \
+    && ./bin/nim c -d:release -o:bin/testament testament/testament.nim \
     && cd .. \
     && rm -f "nim-${NIM_VERSION}.tar.xz" \
     && echo "Nim ${NIM_VERSION} installed successfully"
