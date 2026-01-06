@@ -296,7 +296,7 @@ proc validateConfig*(config: YabbConfig): YabbResult[void] =
       )
     )
 
-  # Verify btrfs filesystem 
+  # Verify btrfs filesystem
   let srcBtrfs = isBtrfsFilesystem($config.srcDir)
   if srcBtrfs.isErr:
     return

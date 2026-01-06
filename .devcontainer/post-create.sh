@@ -19,6 +19,9 @@ sed -i "s/^plugins=.*/plugins=($PLUGINS)/" ~/.zshrc
 # Shell aliases - ALL using just commands
 cat >> ~/.zshrc << 'EOF'
 
+# Add workspace bin to PATH for running built binaries directly
+export PATH="/workspaces/yabb/bin:$PATH"
+
 # =============================================================================
 # YABB Development Aliases (all via just)
 # =============================================================================

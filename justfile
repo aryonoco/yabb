@@ -18,7 +18,7 @@ set dotenv-filename := "versions.env"
 # These fallbacks are only used if versions.env is missing
 NIM_VERSION := env_var_or_default("NIM_VERSION", "2.2.6")
 NPH_VERSION := env_var_or_default("NPH_VERSION", "0.6.2")
-NIMLANGSERVER_VERSION := "latest"
+NIMLANGSERVER_VERSION := env_var_or_default("NIMLANGSERVER_VERSION", "1.12.0")
 
 # Extract current installed versions
 _nim-version:
@@ -52,8 +52,9 @@ versions:
     @echo "  just:          $(just --version)"
     @echo ""
     @echo "Target versions (from versions.env):"
-    @echo "  NIM_VERSION: {{NIM_VERSION}}"
-    @echo "  NPH_VERSION: {{NPH_VERSION}}"
+    @echo "  NIM_VERSION:           {{NIM_VERSION}}"
+    @echo "  NPH_VERSION:           {{NPH_VERSION}}"
+    @echo "  NIMLANGSERVER_VERSION: {{NIMLANGSERVER_VERSION}}"
 
 # =============================================================================
 # SETUP & INSTALLATION
@@ -66,14 +67,17 @@ setup: _install-nim-tools install
 # Install Nim development tools
 _install-nim-tools:
     @echo "Installing Nim development tools..."
-    # Kill any running nimlangserver and remove package to avoid "Text file busy" error
-    # VS Code may restart nimlangserver after pkill, so we also remove the package dir
-    @pkill -9 nimlangserver 2>/dev/null || true
-    @nimble uninstall -y nimlangserver 2>/dev/null || true
-    @rm -rf ~/.nimble/pkgs2/nimlangserver-* 2>/dev/null || true
-    @sleep 1
-    # Install nimlangserver via nimble
-    nimble install -y nimlangserver
+    # Only install nimlangserver if not already in nim/bin (Dockerfile may have installed it)
+    @if [ ! -x $HOME/nim/bin/nimlangserver ]; then \
+        echo "Installing nimlangserver v{{NIMLANGSERVER_VERSION}} via nimble..."; \
+        pkill -9 nimlangserver 2>/dev/null || true; \
+        nimble uninstall -y nimlangserver 2>/dev/null || true; \
+        rm -rf ~/.nimble/pkgs2/nimlangserver-* 2>/dev/null || true; \
+        sleep 1; \
+        nimble install -y "nimlangserver@={{NIMLANGSERVER_VERSION}}"; \
+    else \
+        echo "nimlangserver already installed in nim/bin"; \
+    fi
     # Build nph from source to avoid nimble's broken nim package resolution
     @if ! command -v nph &> /dev/null || [ "$(nph --version 2>/dev/null | grep -oE '[0-9]+\.[0-9]+\.[0-9]+')" != "{{NPH_VERSION}}" ]; then \
         echo "Installing nph v{{NPH_VERSION}} from source..."; \

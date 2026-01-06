@@ -3,7 +3,8 @@
   "build": {
     "dockerfile": "Dockerfile",
     "args": {
-      "NIM_VERSION": "2.2.6"
+      "NIM_VERSION": "2.2.6",
+      "NIMLANGSERVER_VERSION": "1.12.0"
     }
   },
   "workspaceFolder": "/workspaces/yabb",
@@ -63,6 +64,10 @@
     "VISUAL": "code --wait"
   },
 
+  "remoteEnv": {
+    "PATH": "${containerEnv:PATH}:/workspaces/yabb/bin"
+  },
+
   "runArgs": [
     "--init",
     "--cap-drop=ALL",
@@ -93,11 +98,31 @@
         "redhat.vscode-yaml"
       ],
       "settings": {
+        "nim.provider": "lsp",
         "nim.lintOnSave": true,
         "nim.buildOnSave": false,
         "nim.buildCommand": "c",
         "nim.project": ["src/yabb.nim"],
         "nim.test-project": "tests/test_all.nim",
+        "nim.lsp.path": "/home/vscode/nim/bin/nimlangserver",
+        "nim.nimsuggestPath": "/home/vscode/nim/bin/nimsuggest",
+        "nim.useNimCheck": true,
+        "nim.maxNimsuggestProcesses": 1,
+        "nim.nimsuggestIdleTimeout": 20000,
+        "nim.timeout": 120000,
+        "nim.autoRestart": true,
+        "nim.projectMapping": [
+          {
+            "projectFile": "tests/test_all.nim",
+            "fileRegex": "tests/.*\\.nim"
+          },
+          {
+            "projectFile": "src/yabb.nim",
+            "fileRegex": ".*\\.nim"
+          }
+        ],
+        "nim.notificationVerbosity": "warning",
+        "nimlangserver.trace.server": "off",
 
         "nph.formatOnSave": true,
 
@@ -176,7 +201,7 @@
             "cwd": "${workspaceFolder}",
             "preLaunchTask": "nim: build project debug",
             "initCommands": [
-              "command script import ~/nim-${env:NIM_VERSION}/tools/debug/nimlldb.py"
+              "command script import ~/nim/tools/debug/nimlldb.py"
             ]
           },
           {
@@ -188,7 +213,7 @@
             "cwd": "${workspaceFolder}",
             "preLaunchTask": "nim: build debug",
             "initCommands": [
-              "command script import ~/nim-${env:NIM_VERSION}/tools/debug/nimlldb.py"
+              "command script import ~/nim/tools/debug/nimlldb.py"
             ]
           },
           {
@@ -200,7 +225,7 @@
             "cwd": "${workspaceFolder}",
             "preLaunchTask": "nim: build tests",
             "initCommands": [
-              "command script import ~/nim-${env:NIM_VERSION}/tools/debug/nimlldb.py"
+              "command script import ~/nim/tools/debug/nimlldb.py"
             ]
           }
         ]

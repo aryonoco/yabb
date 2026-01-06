@@ -10,6 +10,7 @@ ENV DEBIAN_FRONTEND=noninteractive
 
 # Build arguments for version management
 ARG NIM_VERSION=2.2.6
+ARG NIMLANGSERVER_VERSION=1.12.0
 
 # Environment variables
 ENV NIM_VERSION=${NIM_VERSION}
@@ -63,9 +64,24 @@ RUN echo "Installing Nim ${NIM_VERSION} from source..." \
     && ./koch boot -d:release \
     && ./koch nimble \
     && ./bin/nim c -d:release -o:bin/testament testament/testament.nim \
+    && ./bin/nim c -d:release -o:bin/nimsuggest nimsuggest/nimsuggest.nim \
     && cd .. \
     && rm -f "nim-${NIM_VERSION}.tar.xz" \
     && echo "Nim ${NIM_VERSION} installed successfully"
+
+# Install nimlangserver to nim/bin (ensures availability before VS Code extensions load)
+ARG NIMLANGSERVER_VERSION
+RUN cd /tmp \
+    && git clone --depth 1 --branch "v${NIMLANGSERVER_VERSION}" \
+       https://github.com/nim-lang/langserver.git nimlangserver \
+    && cd nimlangserver \
+    && $HOME/nim-${NIM_VERSION}/bin/nimble setup --accept \
+    && $HOME/nim-${NIM_VERSION}/bin/nim c -d:release \
+       -o:$HOME/nim-${NIM_VERSION}/bin/nimlangserver nimlangserver.nim \
+    && cd / && rm -rf /tmp/nimlangserver
+
+# Create version-agnostic symlink for tooling configs
+RUN ln -s ~/nim-${NIM_VERSION} ~/nim
 
 # Verify installation
 RUN nim --version && nimble --version
