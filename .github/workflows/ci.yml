@@ -57,6 +57,7 @@ jobs:
           ./bin/nim c -d:release koch
           ./koch boot -d:release
           ./koch nimble
+          ./koch testament
           cd ..
           rm -f "nim-${{ env.NIM_VERSION }}.tar.xz"
           echo "Nim ${{ env.NIM_VERSION }} installed successfully"
