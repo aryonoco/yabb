@@ -36,16 +36,17 @@ type
     path: string
     acquired: bool
 
-# Pure constructors for FlockSpec
-func writeLockSpec*(): FlockSpec =
+# Constructors for FlockSpec
+# Note: Use proc instead of func because SEEK_SET is seen as global state by strictFuncs
+proc writeLockSpec*(): FlockSpec =
   ## Create spec for exclusive write lock on entire file
   FlockSpec(lockType: ltWrite, whence: SEEK_SET, start: 0, length: 0)
 
-func readLockSpec*(): FlockSpec =
+proc readLockSpec*(): FlockSpec =
   ## Create spec for shared read lock on entire file
   FlockSpec(lockType: ltRead, whence: SEEK_SET, start: 0, length: 0)
 
-func unlockSpec*(): FlockSpec =
+proc unlockSpec*(): FlockSpec =
   ## Create spec for releasing a lock
   FlockSpec(lockType: ltUnlock, whence: SEEK_SET, start: 0, length: 0)
 

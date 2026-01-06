@@ -176,10 +176,9 @@ proc checkSendStreamHasContent*(
     NoChangesThreshold = 300
 
   let shellCmd =
-    "btrfs send --quiet -p " &
-    quoteShellArg(parentSnapshot) & " " &
-    quoteShellArg(currentSnapshot) &
-    " 2>/dev/null | head -c " & $StreamCheckBytes & " | wc -c"
+    "btrfs send --quiet -p " & quoteShellArg(parentSnapshot) & " " &
+    quoteShellArg(currentSnapshot) & " 2>/dev/null | head -c " & $StreamCheckBytes &
+    " | wc -c"
 
   debug "Checking for changes (streaming)",
     parent = parentSnapshot, current = currentSnapshot
