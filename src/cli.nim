@@ -318,6 +318,21 @@ proc run*(
   elif cleanupRes.value.cleaned > 0:
     info "Cleaned up incomplete snapshots", cleaned = cleanupRes.value.cleaned
 
+  # Clean orphaned destination snapshots (failed btrfs receive remnants)
+  let dstCleanupRes = withSpinner(
+    ctx,
+    "Cleaning up orphaned destination snapshots",
+    proc(): YabbResult[tuple[cleaned: int, failed: int]] =
+      cleanupOrphanedDestSnapshots($cfg.dstDir, cfg),
+  )
+  if dstCleanupRes.isErr:
+    # Cleanup failure is non-fatal - warn and continue
+    warn "Destination snapshot cleanup failed (non-fatal)",
+      msg = dstCleanupRes.error.msg
+  elif dstCleanupRes.value.cleaned > 0:
+    info "Cleaned up orphaned destination snapshots",
+      cleaned = dstCleanupRes.value.cleaned
+
   # Check for shutdown before snapshot creation
   checkShutdown().isOkOr:
     info "Shutdown requested, exiting"

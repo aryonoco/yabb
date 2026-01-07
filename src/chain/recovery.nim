@@ -9,7 +9,7 @@
 ## Chain recovery logic for BTRFS snapshots
 ## Handles recovery from broken chains and missing parents
 
-import std/[os, algorithm, times, sequtils, options]
+import std/[os, algorithm, times, sequtils, options, strutils]
 import ../wrappers/log
 import ../types
 import ../errors
@@ -302,6 +302,74 @@ proc cleanupIncompleteSnapshots*(
   )
 
   info "Incomplete snapshot cleanup completed", cleaned = cleaned, failed = failed
+  ok((cleaned: cleaned, failed: failed))
+
+proc isOrphanedDestSnapshot*(path: string): YabbResult[bool] =
+  ## Check if a snapshot is orphaned (no Received UUID = incomplete receive)
+  ## Orphaned snapshots are left behind by failed btrfs receive operations
+  let isSubvol = isSubvolume(path)
+  if isSubvol.isErr or not isSubvol.value:
+    return ok(false) # Not a subvolume, skip
+
+  let recvUuid = getReceivedUuid(path)
+  if recvUuid.isErr:
+    return ok(false) # Cannot determine, skip
+
+  # Orphaned if it's a subvolume with no Received UUID
+  ok(recvUuid.value.isNone)
+
+proc cleanupOrphanedDestSnapshots*(
+    destDir: string, config: YabbConfig
+): YabbResult[tuple[cleaned: int, failed: int]] =
+  ## Clean up orphaned destination snapshots (those with no Received UUID)
+  ## These are left behind by failed btrfs receive operations
+  ## Returns count of cleaned and failed deletions
+
+  if not dirExists(destDir):
+    return ok((cleaned: 0, failed: 0))
+
+  let entries =
+    try:
+      toSeq(walkDir(destDir))
+    except OSError as e:
+      return err(btrfsError("Failed to list destination directory: " & e.msg))
+
+  # Filter to snapshot directories that are orphaned
+  let orphans = entries
+    .filterIt(it.kind == pcDir and extractFilename(it.path).startsWith(SnapshotPrefix))
+    .filterIt(
+      block:
+        let check = isOrphanedDestSnapshot(it.path)
+        check.isOk and check.value
+    )
+    .mapIt(it.path)
+
+  if orphans.len == 0:
+    debug "No orphaned destination snapshots found", destDir = destDir
+    return ok((cleaned: 0, failed: 0))
+
+  info "Found orphaned destination snapshots", count = orphans.len
+
+  # Use fold pattern for deletion with counters (matching cleanupIncompleteSnapshots style)
+  let (cleaned, failed) = orphans.foldl(
+    block:
+      if config.dryRun:
+        info "DRY_RUN: Would delete orphaned destination snapshot", path = b
+        (a[0] + 1, a[1])
+      else:
+        let delRes = deleteSubvolume(b, config.dryRun)
+        if delRes.isOk:
+          info "Deleted orphaned destination snapshot", path = b
+          (a[0] + 1, a[1])
+        else:
+          warn "Failed to delete orphaned destination snapshot",
+            path = b, error = delRes.error.msg
+          (a[0], a[1] + 1),
+    (0, 0),
+  )
+
+  info "Orphaned destination snapshot cleanup completed",
+    cleaned = cleaned, failed = failed
   ok((cleaned: cleaned, failed: failed))
 
 proc recoverChain*(

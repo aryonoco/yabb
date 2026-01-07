@@ -170,3 +170,27 @@ proc getProperty*(path, property: string): YabbResult[string] =
       ok(parts[1].strip())
     else:
       err(btrfsError("Invalid property format for " & property))
+
+func parseReceivedUuid(output: string): Opt[string] =
+  ## Parse Received UUID from btrfs subvolume show output
+  ## Returns Opt.none if '-' or empty, Opt.some(uuid) otherwise
+  for line in output.splitLines():
+    let trimmed = line.strip()
+    if trimmed.startsWith("Received UUID:"):
+      let parts = trimmed.split(":", maxsplit = 1)
+      if parts.len >= 2:
+        let uuid = parts[1].strip()
+        if uuid.len > 0 and uuid != "-":
+          return Opt.some(uuid)
+  Opt.none(string)
+
+proc getReceivedUuid*(path: string): YabbResult[Opt[string]] =
+  ## Get the Received UUID from a btrfs subvolume
+  ## Returns Opt.none if no Received UUID (incomplete receive or local snapshot)
+  ## Returns Opt.some(uuid) if successfully received from another filesystem
+  let res = runBtrfs(["subvolume", "show", path])
+  if res.isErr:
+    return err(res.error)
+  if res.value.exitCode != 0:
+    return err(btrfsError("Not a valid btrfs subvolume: " & path))
+  ok(parseReceivedUuid(res.value.output))
