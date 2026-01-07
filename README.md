@@ -217,13 +217,10 @@ Code style: `func` for pure functions, `proc` only for side effects. Versioning 
 
 ## AI/LLM Disclosure
 
-Parts of this project were developed with LLM/AI assistance. The LLLM agents helped with:
-- Documentation
-- Boilerplate and repetitive code patterns
-- Test scaffolding
+This project was developed with significant LLM involvement. I'm a systems architect by trade, not a programmer. I designed the core logic, made technical decisions and directed development, but AI/LLM tools generated most of the code.
 
-All LLM-generated code was reviewed, tested, and modified by a human. The core logic,
-architecture decisions, and BTRFS integration are written by me.
+All code was reviewed, tested, and iterated on by me. The design choices (Result types over exceptions, functional patterns, safety configuration, etc) are mine. The Nim syntax is not.
+I'm publishing this because it works for me, not because of how it was written.
 
 ## License
 
