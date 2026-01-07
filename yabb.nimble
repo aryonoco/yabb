@@ -27,11 +27,11 @@ when not defined(release):
 # Dependencies
 
 requires "nim >= 2.2.0"
-requires "cligen >= 1.7.0"
-requires "results >= 0.5.0"
-requires "chronicles >= 0.10.0"
-requires "parsetoml >= 0.7.0"
-requires "uuids >= 0.1.0"
+requires "cligen == 1.9.5"
+requires "results == 0.5.1"
+requires "chronicles == 0.12.0"
+requires "parsetoml == 0.7.2"
+requires "uuids == 0.1.12"
 
 # Tasks
 
