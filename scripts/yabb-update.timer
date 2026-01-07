@@ -1,0 +1,33 @@
+# =============================================================================
+# YABB Update Timer
+# Triggers weekly updates to fetch latest YABB release
+# =============================================================================
+# Installation (copy both files, then enable):
+#   sudo cp yabb-update.service yabb-update.timer /etc/systemd/system/
+#   sudo systemctl daemon-reload
+#   sudo systemctl enable --now yabb-update.timer
+#
+# Status:  systemctl list-timers yabb-update.timer
+# =============================================================================
+
+[Unit]
+Description=Weekly YABB Update
+Documentation=https://github.com/aryonoco/yabb
+
+
+[Timer]
+# Run weekly (Sunday 00:00)
+OnCalendar=weekly
+
+# Run missed updates after boot
+Persistent=true
+
+# Spread load: randomise start within 1 hour
+RandomizedDelaySec=3600
+
+# systemd 257: don't re-trigger if service still running
+DeferReactivation=yes
+
+
+[Install]
+WantedBy=timers.target

@@ -1,0 +1,33 @@
+# =============================================================================
+# YABB Backup Timer
+# Triggers daily BTRFS backups
+# =============================================================================
+# Installation (copy both files, then enable):
+#   sudo cp yabb.service yabb.timer /etc/systemd/system/
+#   sudo systemctl daemon-reload
+#   sudo systemctl enable --now yabb.timer
+#
+# Status:  systemctl list-timers yabb.timer
+# =============================================================================
+
+[Unit]
+Description=Daily YABB Backup
+Documentation=https://github.com/aryonoco/yabb
+
+
+[Timer]
+# Run daily (00:00)
+OnCalendar=daily
+
+# Run missed backups after boot
+Persistent=true
+
+# Spread load: randomise start within 30 minutes
+RandomizedDelaySec=1800
+
+# Don't re-trigger if service still running
+DeferReactivation=yes
+
+
+[Install]
+WantedBy=timers.target

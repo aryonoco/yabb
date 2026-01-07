@@ -53,6 +53,20 @@ because the tools above aren't good.
 
 ## Install
 
+### Automatic (recommended)
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/aryonoco/yabb/main/scripts/install.sh | sudo bash
+sudo cp /opt/yabb/yabb.conf /etc/yabb.toml
+# Edit /etc/yabb.toml with your paths
+```
+
+To update: `sudo /opt/yabb/install.sh --force`
+
+To uninstall: `sudo /opt/yabb/install.sh --remove`
+
+### Build from source
+
 ```bash
 git clone https://github.com/aryonoco/yabb.git
 cd yabb
@@ -62,11 +76,7 @@ sudo cp config/yabb.toml.example /etc/yabb.toml
 # Edit /etc/yabb.toml with your paths
 ```
 
-Or for a dynamically-linked release build:
-
-```bash
-just build-release
-```
+For a dynamically-linked release build: `just build-release`
 
 ## Configuration
 
@@ -125,33 +135,23 @@ yabb optimize
 
 ### Automation
 
-```ini
-# /etc/systemd/system/yabb.service
-[Unit]
-Description=YABB backup
-After=local-fs.target
-
-[Service]
-Type=oneshot
-ExecStart=/usr/local/bin/yabb run
-```
-
-```ini
-# /etc/systemd/system/yabb.timer
-[Unit]
-Description=Run YABB hourly
-
-[Timer]
-OnCalendar=hourly
-Persistent=true
-
-[Install]
-WantedBy=timers.target
-```
+YABB includes hardened systemd service files with security sandboxing:
 
 ```bash
-sudo systemctl enable --now yabb.timer
+# If installed via install.sh, service files are in /opt/yabb/
+sudo cp /opt/yabb/yabb.service /opt/yabb/yabb.timer /etc/systemd/system/
+sudo cp /opt/yabb/yabb-update.service /opt/yabb/yabb-update.timer /etc/systemd/system/
+
+# Configure paths for your setup
+sudo mkdir -p /etc/systemd/system/yabb.service.d
+echo -e '[Service]\nReadWritePaths=/data /backup /snapshots' | sudo tee /etc/systemd/system/yabb.service.d/paths.conf
+
+# Enable daily backups and weekly updates
+sudo systemctl daemon-reload
+sudo systemctl enable --now yabb.timer yabb-update.timer
 ```
+
+Check status: `systemctl list-timers yabb*`
 
 ## Exit codes
 

@@ -7,24 +7,78 @@ REQUIREMENTS
 ------------
 - Linux with BTRFS filesystems (source and destination must both be BTRFS)
 - Root access (sudo) for backup operations
+- Bash 5.2 or newer (for automatic installer)
 - btrfs-progs 5.14 or newer
-- Standard tools: pv, flock, setfattr, getfattr
+- Standard tools: pv, flock, setfattr, getfattr, curl
 
 Most Linux distributions include these tools. On Debian/Ubuntu:
-  sudo apt install btrfs-progs pv attr
+  sudo apt install btrfs-progs pv attr curl
 
 On Fedora:
-  sudo dnf install btrfs-progs pv attr
+  sudo dnf install btrfs-progs pv attr curl
 
 On Arch Linux:
-  sudo pacman -S btrfs-progs pv attr
+  sudo pacman -S btrfs-progs pv attr curl
 
 
 ================================================================================
-OPTION A: USER INSTALLATION (Recommended)
+OPTION A: AUTOMATIC INSTALLATION (Recommended)
+================================================================================
+
+The easiest way to install YABB is using the automatic installer script.
+This downloads the latest release, verifies checksums, and installs to /opt/yabb.
+
+1. Run the installer:
+
+   curl -fsSL https://raw.githubusercontent.com/aryonoco/yabb/main/scripts/install.sh | sudo bash
+
+   Or download and inspect first:
+
+   curl -fsSL https://raw.githubusercontent.com/aryonoco/yabb/main/scripts/install.sh -o install.sh
+   less install.sh  # Review the script
+   sudo bash install.sh
+
+2. Create your configuration file:
+
+   sudo cp /opt/yabb/yabb.conf /etc/yabb.toml
+   sudo nano /etc/yabb.toml    # or your preferred editor
+
+   Update the [paths] section with your actual directories:
+   - src_dir: The directory you want to back up (must be on BTRFS)
+   - dst_dir: Where to send snapshots (must be on BTRFS)
+   - snapshot_dir: Where to store local snapshots (must be on BTRFS)
+
+3. Verify the installation:
+
+   /opt/yabb/yabb --help
+
+
+UPDATING YABB
+-------------
+To update to the latest version:
+
+   sudo /opt/yabb/install.sh --force
+
+Or use the systemd timer for automatic weekly updates (see SYSTEMD section below).
+
+
+UNINSTALLING YABB
+-----------------
+Remove YABB but keep configuration:
+
+   sudo /opt/yabb/install.sh --remove
+
+Remove YABB and all configuration:
+
+   sudo /opt/yabb/install.sh --purge
+
+
+================================================================================
+OPTION B: MANUAL USER INSTALLATION (From Tarball)
 ================================================================================
 
 This installs yabb for your user only, without modifying system directories.
+Use this if you downloaded the release tarball manually.
 
 1. Extract and install the binary:
 
@@ -87,7 +141,7 @@ For Fish:
 
 
 ================================================================================
-OPTION B: SYSTEM-WIDE INSTALLATION
+OPTION C: MANUAL SYSTEM-WIDE INSTALLATION (From Tarball)
 ================================================================================
 
 This installs yabb for all users on the system.
@@ -95,13 +149,17 @@ This installs yabb for all users on the system.
 1. Extract and install to /opt:
 
    tar xzf yabb-*.tar.gz
-   sudo mkdir -p /opt/yabb/bin
-   sudo cp yabb-*/yabb /opt/yabb/bin/
-   sudo chmod +x /opt/yabb/bin/yabb
+   sudo mkdir -p /opt/yabb
+   sudo cp yabb-*/yabb /opt/yabb/
+   sudo chmod +x /opt/yabb/yabb
 
-2. Add to system PATH (create a profile script):
+2. Create symlink (or add to PATH):
 
-   echo 'export PATH="/opt/yabb/bin:$PATH"' | sudo tee /etc/profile.d/yabb.sh
+   sudo ln -sf /opt/yabb/yabb /usr/local/bin/yabb
+
+   Or add to system PATH (create a profile script):
+
+   echo 'export PATH="/opt/yabb:$PATH"' | sudo tee /etc/profile.d/yabb.sh
    sudo chmod +x /etc/profile.d/yabb.sh
 
    Log out and back in, or run: source /etc/profile.d/yabb.sh
@@ -184,41 +242,83 @@ QUICK START
 
 
 ================================================================================
-SYSTEMD TIMER (optional)
+SYSTEMD AUTOMATION (Recommended)
 ================================================================================
 
-For automated hourly backups, create these files:
+YABB includes hardened systemd service files for automated backups and updates.
+These use modern systemd 257 features for security hardening.
 
-/etc/systemd/system/yabb.service:
-  [Unit]
-  Description=YABB BTRFS backup
-  After=local-fs.target
+INSTALLING THE SERVICE FILES
+----------------------------
+If you used the automatic installer (Option A), the service files are already
+in /opt/yabb/. Copy them to systemd:
 
-  [Service]
-  Type=oneshot
-  ExecStart=/opt/yabb/bin/yabb run
-  # Or for user install: ExecStart=/home/YOUR_USER/.local/bin/yabb run
-  Nice=19
-  IOSchedulingClass=idle
+   sudo cp /opt/yabb/yabb.service /etc/systemd/system/
+   sudo cp /opt/yabb/yabb.timer /etc/systemd/system/
+   sudo cp /opt/yabb/yabb-update.service /etc/systemd/system/
+   sudo cp /opt/yabb/yabb-update.timer /etc/systemd/system/
 
-/etc/systemd/system/yabb.timer:
-  [Unit]
-  Description=Run YABB backup hourly
+   # Optional: create update config directory
+   sudo mkdir -p /etc/yabb
+   sudo cp /opt/yabb/yabb-update.conf /etc/yabb/update.conf
 
-  [Timer]
-  OnCalendar=hourly
-  Persistent=true
-  RandomizedDelaySec=300
+Reload systemd and enable the timers:
 
-  [Install]
-  WantedBy=timers.target
+   sudo systemctl daemon-reload
+   sudo systemctl enable --now yabb.timer
+   sudo systemctl enable --now yabb-update.timer
 
-Enable and start the timer:
-  sudo systemctl daemon-reload
-  sudo systemctl enable --now yabb.timer
 
-Check timer status:
-  sudo systemctl list-timers yabb.timer
+WHAT THE SERVICES DO
+--------------------
+yabb.timer / yabb.service:
+  - Runs daily BTRFS backup
+  - Low CPU/IO priority to avoid impacting other work
+  - Comprehensive security hardening
+
+yabb-update.timer / yabb-update.service:
+  - Runs weekly to check for and install YABB updates
+  - Network access limited to GitHub only
+  - Verifies SHA256 checksums before installing
+
+
+CONFIGURING BACKUP PATHS
+------------------------
+The yabb.service needs read/write access to your BTRFS paths.
+Create a drop-in file to configure these:
+
+   sudo mkdir -p /etc/systemd/system/yabb.service.d
+   sudo nano /etc/systemd/system/yabb.service.d/paths.conf
+
+Add your paths (adjust to match your /etc/yabb.toml):
+
+   [Service]
+   ReadWritePaths=/data /backup /snapshots
+
+Then reload and restart:
+
+   sudo systemctl daemon-reload
+   sudo systemctl restart yabb.service
+
+
+CHECKING STATUS
+---------------
+View timer status:
+   systemctl list-timers yabb*
+
+View service logs:
+   journalctl -u yabb.service
+   journalctl -u yabb-update.service
+
+Run backup manually:
+   sudo systemctl start yabb.service
+
+Run update manually:
+   sudo systemctl start yabb-update.service
+
+Check security score:
+   systemd-analyze security yabb.service
+   systemd-analyze security yabb-update.service
 
 
 ================================================================================
@@ -229,6 +329,7 @@ TROUBLESHOOTING
 - "Not a btrfs filesystem": Ensure all paths are on BTRFS volumes
 - "No parent snapshot": First run creates a full snapshot (expected)
 - "Config file not found": Create config at ~/.config/yabb/yabb.toml or /etc/yabb.toml
+- "Bash version too old": Requires Bash 5.2+ for automatic installer
 - Check logs: journalctl -u yabb.service (if using systemd)
 
 

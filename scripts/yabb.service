@@ -1,0 +1,126 @@
+# =============================================================================
+# YABB Backup Service
+# Performs BTRFS incremental backups with retention policies
+# =============================================================================
+# Installation (copy both files, then enable):
+#   sudo cp yabb.service yabb.timer /etc/systemd/system/
+#   sudo systemctl daemon-reload
+#   sudo systemctl enable --now yabb.timer
+#
+# Manual run:  sudo systemctl start yabb.service
+# =============================================================================
+
+[Unit]
+Description=YABB BTRFS Backup
+Documentation=https://github.com/aryonoco/yabb
+After=local-fs.target
+
+# Only run if binary and config exist
+ConditionPathExists=/opt/yabb/yabb
+ConditionPathExists=/etc/yabb.toml
+
+
+[Service]
+Type=oneshot
+RemainAfterExit=no
+
+# Run the backup
+ExecStart=/opt/yabb/yabb run
+
+# Timeouts (allow long backups)
+TimeoutStartSec=3600
+TimeoutStopSec=120
+
+# -----------------------------------------------------------------------------
+# Resource Priority (low impact on system)
+# -----------------------------------------------------------------------------
+Nice=19
+IOSchedulingClass=idle
+IOSchedulingPriority=7
+CPUSchedulingPolicy=idle
+
+# -----------------------------------------------------------------------------
+# Filesystem & Mount Isolation
+# -----------------------------------------------------------------------------
+PrivateTmp=yes
+PrivateMounts=yes
+ProtectHome=yes
+ProtectProc=invisible
+ProcSubset=pid
+
+# BTRFS backup needs access to configured paths - these must be adjusted
+# based on your /etc/yabb.toml configuration. Examples:
+# ReadWritePaths=/data /backup /snapshots
+#
+# The paths below are placeholders; override in a drop-in file:
+# /etc/systemd/system/yabb.service.d/paths.conf
+
+# -----------------------------------------------------------------------------
+# Kernel Protection
+# -----------------------------------------------------------------------------
+# Note: ProtectSystem and ProtectKernelTunables are NOT set because
+# BTRFS operations require access to /sys/fs/btrfs and related paths
+ProtectKernelModules=yes
+ProtectKernelLogs=yes
+ProtectClock=yes
+ProtectHostname=yes
+
+# -----------------------------------------------------------------------------
+# Privilege Restriction
+# -----------------------------------------------------------------------------
+# Note: NoNewPrivileges is NOT set because BTRFS send/receive may need it
+LockPersonality=yes
+RestrictSUIDSGID=yes
+
+# -----------------------------------------------------------------------------
+# Capabilities (BTRFS requires CAP_SYS_ADMIN)
+# -----------------------------------------------------------------------------
+CapabilityBoundingSet=CAP_SYS_ADMIN CAP_DAC_READ_SEARCH CAP_FOWNER CAP_CHOWN CAP_MKNOD
+AmbientCapabilities=CAP_SYS_ADMIN CAP_DAC_READ_SEARCH CAP_FOWNER
+
+# -----------------------------------------------------------------------------
+# System Call Filtering
+# -----------------------------------------------------------------------------
+SystemCallArchitectures=native
+SystemCallFilter=@system-service @mount
+SystemCallFilter=~@clock @cpu-emulation @debug @obsolete @reboot @swap
+SystemCallErrorNumber=EPERM
+
+# -----------------------------------------------------------------------------
+# Network (not needed for local backup)
+# -----------------------------------------------------------------------------
+PrivateNetwork=yes
+IPAddressDeny=any
+RestrictAddressFamilies=AF_UNIX
+
+# -----------------------------------------------------------------------------
+# Namespace Isolation
+# -----------------------------------------------------------------------------
+RestrictNamespaces=~user pid net uts
+KeyringMode=private
+
+# -----------------------------------------------------------------------------
+# Memory Protection
+# -----------------------------------------------------------------------------
+MemoryDenyWriteExecute=yes
+RestrictRealtime=yes
+
+# -----------------------------------------------------------------------------
+# Resource Limits
+# -----------------------------------------------------------------------------
+LimitNOFILE=65535
+LimitNPROC=512
+TasksMax=64
+MemoryMax=2G
+
+# -----------------------------------------------------------------------------
+# Logging
+# -----------------------------------------------------------------------------
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=yabb
+LogLevelMax=info
+
+
+[Install]
+WantedBy=multi-user.target
