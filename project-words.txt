@@ -1,97 +1,104 @@
 # Nim Language
+chronicles
+cligen
 nim
 nimble
+nimcache
 nimlangserver
 nimpretty
-nph
-nimcache
-nimsuggest
 nimscript
-cligen
+nimsuggest
+nph
 parsetoml
-chronicles
 uuids
 
 # Nim Keywords & Patterns
+checkShutdown
+filterIt
+foldl
 func
+isErr
+isNone
+isOk
+isSome
+mapIt
 proc
 ufcs
 UFCS
-foldl
-filterIt
-mapIt
-isSome
-isNone
-isOk
-isErr
 valueOr
 withOverrides
-checkShutdown
 
 # BTRFS / Storage
 btrfs
 BTRFS
-subvolume
-subvolumes
-scrub
-scrubbing
 defrag
 defragment
 defragmentation
-zstd
-ZSTD
 lzo
 LZO
+scrub
+scrubbing
+subvolume
+subvolumes
 zlib
 ZLIB
+zstd
+ZSTD
 
 # Project-Specific
-yabb
-YABB
+chainlen
+dstdir
 snapdir
 srcdir
-dstdir
-chainlen
+yabb
+YABB
 
 # Technical Terms
 journald
-systemd
-SIGTERM
-SIGINT
 musl
+SIGINT
+SIGTERM
 statically
-stdout
 stderr
+stdout
+systemd
 
 # British English Variants
-serialisation
-serialise
-deserialisation
-deserialise
-normalised
-denormalised
-materialisation
-materialise
 behaviour
 colour
+denormalised
+deserialisation
+deserialise
 honour
+materialisation
+materialise
+normalised
+serialisation
+serialise
 
 # DevOps & Tools
+codelldb
 devcontainer
 devcontainers
 healthcheck
-pre-commit
-trivy
 lldb
 LLDB
-codelldb
+pre-commit
+trivy
 
 # VS Code Extensions (author names)
-eamodio
-usernamehw
-errorlens
-timonwong
-foxundermoon
+Ameri
+armv
 arnetheduck
-vadimcn
+Conv
+eamodio
+errorlens
+flto
+foxundermoon
+Funcs
+linkerexe
+mtune
 tamasfe
+timonwong
+usernamehw
+vadimcn

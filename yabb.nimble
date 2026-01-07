@@ -8,21 +8,35 @@ srcDir = "src"
 binDir = "bin"
 bin = @["yabb"]
 
-# Type safety
-# Note: strictCaseObjects and strictFuncs disabled due to external library compatibility
-# (chronicles, faststreams).
-switch("experimental", "strictDefs")
-switch("experimental", "strictNotNil")
+# =============================================================================
+# Configuration
+# =============================================================================
 
-# Debug build configuration (default via `nimble build`)
+
+--experimental:strictDefs
+--experimental:strictNotNil
+--experimental:strictFuncs
+--experimental:strictCaseObjects
+
+# Style
+switch("styleCheck", "error")
+
+switch("warningAsError", "UnusedImport")
+switch("warningAsError", "Deprecated")
+switch("warningAsError", "CStringConv")
+switch("warningAsError", "EnumConv")
+switch("warningAsError", "HoleEnumConv")
+switch("hintAsError", "DuplicateModuleImport")
+
+# Debug build (default `nimble build`)
 when not defined(release):
-  switch("debugger", "native") # Native debugger support (LLDB/GDB)
-  switch("lineDir", "on") # Include line info for debugging
-  switch("stackTrace", "on") # Stack traces on crash
-  switch("lineTrace", "on") # Line traces on crash
-  switch("assertions", "on") # Enable assertions
-  switch("checks", "on") # Enable runtime checks
-  switch("opt", "none") # No optimisation
+  switch("debugger", "native")
+  switch("lineDir", "on")
+  switch("stackTrace", "on")
+  switch("lineTrace", "on")
+  switch("assertions", "on")
+  switch("checks", "on")
+  switch("opt", "none")
 
 # Dependencies
 
