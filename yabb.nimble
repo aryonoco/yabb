@@ -12,31 +12,70 @@ bin = @["yabb"]
 # Configuration
 # =============================================================================
 
+# Memory management - explicit ORC for cycle collection
+--mm:
+  orc
 
---experimental:strictDefs
---experimental:strictNotNil
---experimental:strictFuncs
---experimental:strictCaseObjects
+# Type safety - all experimental strict modes
+--experimental:
+  strictDefs
+--experimental:
+  strictNotNil
+--experimental:
+  strictFuncs
+--experimental:
+  strictCaseObjects
+# --experimental:views  # Borrow checking for lent T, openArray - disabled due to
+# incompatibility with chronicles and results libraries
+--threads:
+  on # Thread safety checks - enabled for future-proofing
 
-# Style
-switch("styleCheck", "error")
+# Style enforcement
+--styleCheck:
+  error
 
-switch("warningAsError", "UnusedImport")
-switch("warningAsError", "Deprecated")
-switch("warningAsError", "CStringConv")
-switch("warningAsError", "EnumConv")
-switch("warningAsError", "HoleEnumConv")
-switch("hintAsError", "DuplicateModuleImport")
+# Warnings as errors - comprehensive list
+--warningAsError:
+  UnusedImport
+--warningAsError:
+  Deprecated
+--warningAsError:
+  CStringConv
+--warningAsError:
+  EnumConv
+--warningAsError:
+  HoleEnumConv
+--warningAsError:
+  Uninit
+--warningAsError:
+  ProveInit
+--warningAsError:
+  UnsafeSetLen
+--hintAsError:
+  DuplicateModuleImport
+
+# Float safety - catch NaN/Infinity from arithmetic errors
+--floatChecks:
+  on
 
 # Debug build (default `nimble build`)
 when not defined(release):
-  switch("debugger", "native")
-  switch("lineDir", "on")
-  switch("stackTrace", "on")
-  switch("lineTrace", "on")
-  switch("assertions", "on")
-  switch("checks", "on")
-  switch("opt", "none")
+  --debugger:
+    native
+  --lineDir:
+    on
+  --stackTrace:
+    on
+  --lineTrace:
+    on
+  --excessiveStackTrace:
+    on
+  --assertions:
+    on
+  --checks:
+    on
+  --opt:
+    none
 
 # Dependencies
 
