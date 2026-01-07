@@ -10,6 +10,7 @@
 
 import std/[os, times, strutils, json, sequtils]
 import cligen
+import cligen/macUt
 import wrappers/log
 import types
 import config
@@ -19,6 +20,10 @@ import btrfs/[snapshot, operations, storage]
 import chain/[manager, recovery]
 import retention/manager as retentionManager
 import utils/[lock, prereq, terminal, functional, progress, shutdown]
+
+const
+  NimbleContent = staticRead("../yabb.nimble")
+  Version = fromNimble(NimbleContent, "version")
 
 type
   OutputFormat = enum
@@ -834,6 +839,7 @@ Run 'yabb <command> --help' for command details.
 """
 
 proc main*(): int =
+  clCfg.version = Version
   try:
     dispatchMulti(
       ["multi", cmdName = "yabb", usage = YabbUsage],
