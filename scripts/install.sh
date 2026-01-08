@@ -8,7 +8,7 @@
 #
 # REQUIREMENTS:
 #   Bash 5.2+
-#   Linux (x86_64, aarch64, riscv64, or ppc64le)
+#   Linux (x86_64, aarch64, riscv64, ppc64le, or loongarch64)
 #   curl, tar, zstd, sha256sum
 #
 # USAGE:
@@ -119,6 +119,7 @@ declare -rA ARCH_MAP=(
   [aarch64]="arm64"
   [riscv64]="riscv64"
   [ppc64le]="ppc64le"
+  [loongarch64]="loong64"
 )
 
 #-------------------------------------------------------------------------------
@@ -865,7 +866,7 @@ USAGE:
 
 DESCRIPTION:
   Download and install YABB (Yet Another BTRFS Backup) from GitHub releases.
-  Automatically detects architecture (x86_64/aarch64/riscv64/ppc64le) and verifies checksums.
+  Automatically detects architecture (x86_64/aarch64/riscv64/ppc64le/loongarch64) and verifies checksums.
 
 INSTALLATION OPTIONS:
   -d, --dir PATH       Install directory (default: ${DEFAULT_INSTALL_DIR})

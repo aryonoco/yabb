@@ -149,6 +149,7 @@ release: && _clean-cache
         aarch64) nimble releaseArm64 && cp bin/yabb-linux-arm64 bin/yabb ;;
         riscv64) nimble releaseRiscv64 && cp bin/yabb-linux-riscv64 bin/yabb ;;
         ppc64le) nimble releasePpc64le && cp bin/yabb-linux-ppc64le bin/yabb ;;
+        loongarch64) nimble releaseLoong64 && cp bin/yabb-linux-loong64 bin/yabb ;;
         *) echo "Unsupported architecture: $ARCH" && exit 1 ;;
     esac
     echo "Release build: bin/yabb (musl static, optimised, stripped)"
@@ -182,8 +183,13 @@ build-ppc64le:
     @echo "Cross-compiling for PPC64LE..."
     nimble releasePpc64le
 
-# Build all Linux architectures (amd64, arm64, riscv64, ppc64le)
-build-all: build-amd64 build-arm64 build-riscv64 build-ppc64le
+# Build for LoongArch64 Linux (static musl)
+build-loong64:
+    @echo "Cross-compiling for LoongArch64..."
+    nimble releaseLoong64
+
+# Build all Linux architectures (amd64, arm64, riscv64, ppc64le, loong64)
+build-all: build-amd64 build-arm64 build-riscv64 build-ppc64le build-loong64
     @echo ""
     @echo "All architectures built:"
     @ls -lh bin/yabb-linux-* 2>/dev/null || echo "No binaries found"
@@ -372,12 +378,12 @@ watch-test:
 binary-info:
     @echo "Binary information:"
     @for bin in bin/yabb bin/yabb-linux-*; do \
-        if [ -f "$$bin" ]; then \
+        if [ -f "$bin" ]; then \
             echo ""; \
-            echo "=== $$bin ==="; \
-            file "$$bin"; \
-            ls -lh "$$bin"; \
-            ldd "$$bin" 2>&1 | head -3 || true; \
+            echo "=== $bin ==="; \
+            file "$bin"; \
+            ls -lh "$bin"; \
+            ldd "$bin" 2>&1 | head -3 || true; \
         fi; \
     done
     @if [ ! -f bin/yabb ] && [ ! -f bin/yabb-linux-amd64 ]; then \

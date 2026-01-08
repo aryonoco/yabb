@@ -41,6 +41,10 @@ jobs:
             target: powerpc64le-linux-musl
             nimcpu: "--cpu:powerpc64"
             march: "-mcpu=pwr8 -mtune=pwr9"
+          - arch: loong64
+            target: loongarch64-linux-musl
+            nimcpu: "--cpu:loongarch64"
+            march: "-march=loongarch64"
 
     steps:
       - name: Checkout code

@@ -19,6 +19,7 @@ ENV NIM_VERSION=${NIM_VERSION}
 ENV ZIG_VERSION=${ZIG_VERSION}
 ENV RISCSTAR_VERSION=${RISCSTAR_VERSION}
 ENV PATH="/home/vscode/riscv64-toolchain/bin:/home/vscode/nim-${NIM_VERSION}/bin:/home/vscode/.nimble/bin:/home/vscode/zig:${PATH}"
+ENV SHELL=/bin/zsh
 
 # Install system dependencies
 # NOTE: musl-tools and musl-dev REMOVED - Zig provides musl
@@ -54,7 +55,9 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     entr \
     # Clean up
     && apt-get clean \
-    && rm -rf /var/lib/apt/lists/*
+    && rm -rf /var/lib/apt/lists/* \
+    # Use bash for /bin/sh (dash causes issues with some VS Code extensions)
+    && ln -sf /bin/bash /bin/sh
 
 # Switch to vscode user for Nim/Zig installation
 USER vscode
