@@ -288,9 +288,14 @@ jobs:
         run: |
           echo "Cross-compiling for ${{ matrix.arch }} using Bootlin..."
           # Create symlinks for Nim cross-compilation (--cpu:arm expects arm-linux-gnueabihf-*)
+          # Bootlin uses wrapper scripts that look for .br_real, so symlink both
           cd ~/armv5-toolchain/bin
           for tool in gcc g++ ar ld strip objcopy objdump ranlib nm readelf; do
             ln -sf "arm-buildroot-linux-musleabi-$tool" "arm-linux-gnueabihf-$tool"
+            # Also symlink the .br_real files that Bootlin wrappers need
+            if [ -f "arm-buildroot-linux-musleabi-$tool.br_real" ]; then
+              ln -sf "arm-buildroot-linux-musleabi-$tool.br_real" "arm-linux-gnueabihf-$tool.br_real"
+            fi
           done
           cd /home/runner/work/yabb/yabb
           nim c -d:release --opt:speed --mm:orc -d:lto \
