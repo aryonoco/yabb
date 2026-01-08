@@ -8,8 +8,9 @@
 # =============================================================================
 # YABB Release Workflow
 # Cross-compiles static binaries for all architectures
-# - amd64, arm64, ppc64le: Zig cross-compilation
+# - amd64, arm64, armv7l, ppc64le, loong64: Zig cross-compilation
 # - riscv64: RISCstar toolchain (Zig's musl has ABI incompatibility)
+# Note: armv7l requires NEON (Zig's musl is compiled with NEON optimisations)
 # All builds run in parallel on x86_64 runners
 # Archives use zstd compression (level 19) for best size
 # =============================================================================
@@ -40,6 +41,10 @@ jobs:
             target: aarch64-linux-musl
             nimcpu: "--cpu:arm64"
             march: "-march=armv8-a -mtune=cortex_a72"
+          - arch: armv7l
+            target: arm-linux-musleabihf
+            nimcpu: "--cpu:arm"
+            march: "-mcpu=baseline"
           - arch: riscv64
             nimcpu: "--cpu:riscv64"
             # Uses RISCstar toolchain instead of Zig (Zig's musl has soft-float ABI)

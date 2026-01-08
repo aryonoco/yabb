@@ -7,7 +7,7 @@
 #
 # Package
 
-version = "0.4.18"
+version = "0.4.19"
 author = "Aryan Ameri"
 description = "Yet Another BTRFS Backup"
 license = "MPL 2.0"
@@ -96,7 +96,7 @@ task test, "Run tests":
   exec "testament all"
 
 task clean, "Clean build artifacts":
-  exec "rm -rf bin/yabb bin/yabb-linux-* nimcache/"
+  exec "rm -rf bin/yabb bin/yabb-* nimcache/"
 
 # =============================================================================
 # Release builds
@@ -126,6 +126,16 @@ task releaseArm64, "Build static binary for ARM64 Linux":
     " -o:bin/yabb-linux-arm64 src/yabb.nim"
   exec "llvm-strip -s bin/yabb-linux-arm64"
   echo "Built: bin/yabb-linux-arm64"
+
+task releaseArmv7l, "Build static binary for ARMv7 Linux (armhf)":
+  # Debian armhf: ARMv7-A + VFPv3 + Thumb-2 + NEON, hard-float EABI
+  # Uses baseline (most conservative ARMv7-A target without CPU-specific tuning)
+  # Note: Zig's musl includes NEON-optimised routines, so NEON is required
+  exec "nim c " & releaseFlags & " " & zigccFlags & " " & "--cpu:arm " &
+    "--passC:'-target arm-linux-musleabihf' " & "--passL:'-target arm-linux-musleabihf' " &
+    "--passC:-mcpu=baseline " & ltoFlags & " -o:bin/yabb-linux-armv7l src/yabb.nim"
+  exec "llvm-strip -s bin/yabb-linux-armv7l"
+  echo "Built: bin/yabb-linux-armv7l"
 
 task releaseRiscv64, "Build static binary for RISC-V 64-bit Linux":
   # Uses RISCstar musl toolchain with lp64d ABI (hard-float)
@@ -158,6 +168,7 @@ task releaseLoong64, "Build static binary for LoongArch64 Linux":
 task releaseAll, "Build static binaries for all Linux architectures":
   exec "nimble releaseAmd64"
   exec "nimble releaseArm64"
+  exec "nimble releaseArmv7l"
   exec "nimble releaseRiscv64"
   exec "nimble releasePpc64le"
   exec "nimble releaseLoong64"

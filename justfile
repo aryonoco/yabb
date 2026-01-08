@@ -154,6 +154,7 @@ release: && _clean-cache
     case "$ARCH" in
         x86_64)  nimble releaseAmd64 && cp bin/yabb-linux-amd64 bin/yabb ;;
         aarch64) nimble releaseArm64 && cp bin/yabb-linux-arm64 bin/yabb ;;
+        armv7l)  nimble releaseArmv7l && cp bin/yabb-linux-armv7l bin/yabb ;;
         riscv64) nimble releaseRiscv64 && cp bin/yabb-linux-riscv64 bin/yabb ;;
         ppc64le) nimble releasePpc64le && cp bin/yabb-linux-ppc64le bin/yabb ;;
         loongarch64) nimble releaseLoong64 && cp bin/yabb-linux-loong64 bin/yabb ;;
@@ -179,6 +180,12 @@ build-arm64:
     @echo "Cross-compiling for ARM64..."
     nimble releaseArm64
 
+# Build for ARMv7 Linux (static musl, hard-float, NEON - Debian armhf)
+# Note: Zig's musl requires NEON, so this won't run on NEON-less ARMv7 devices
+build-armv7l:
+    @echo "Cross-compiling for ARMv7 (armhf)..."
+    nimble releaseArmv7l
+
 # Build for RISC-V 64-bit Linux (static musl, lp64d hard-float)
 # Uses RISCstar toolchain - works on both x86-64 and ARM64 hosts
 build-riscv64:
@@ -195,8 +202,8 @@ build-loong64:
     @echo "Cross-compiling for LoongArch64..."
     nimble releaseLoong64
 
-# Build all Linux architectures (amd64, arm64, riscv64, ppc64le, loong64)
-build-all: build-amd64 build-arm64 build-riscv64 build-ppc64le build-loong64
+# Release binaries for all Linux architectures (amd64, arm64, armv7l, riscv64, ppc64le, loong64)
+release-all: build-amd64 build-arm64 build-armv7l build-riscv64 build-ppc64le build-loong64
     @echo ""
     @echo "All architectures built:"
     @ls -lh bin/yabb-linux-* 2>/dev/null || echo "No binaries found"
@@ -316,7 +323,7 @@ _clean-cache:
 # Clean all build artifacts including binaries
 clean:
     @echo "Cleaning build artifacts..."
-    rm -rf bin/yabb bin/yabb-linux-* bin/*.exe
+    rm -rf bin/yabb bin/yabb-* bin/*.exe
     rm -rf nimcache/
     rm -rf htmldocs/
     rm -f testresults.html

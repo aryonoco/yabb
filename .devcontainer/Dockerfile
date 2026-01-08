@@ -70,7 +70,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 USER vscode
 WORKDIR /home/vscode
 
-# Install Zig (cross-compilation toolchain for amd64, arm64, ppc64le)
+# Install Zig (cross-compilation toolchain for amd64, arm64, armv7l, ppc64le, loong64)
 # URL format: zig-{ARCH}-linux-{VERSION}.tar.xz (architecture before OS)
 RUN echo "Installing Zig ${ZIG_VERSION}..." \
     && ARCH=$(uname -m) \

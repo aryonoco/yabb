@@ -14,7 +14,7 @@
 #
 # REQUIREMENTS:
 #   Bash 5.2+
-#   Linux (x86_64, aarch64, riscv64, ppc64le, or loongarch64)
+#   Linux (x86_64, aarch64, riscv64, ppc64le, armv7l or loongarch64)
 #   curl, tar, zstd, sha256sum, flock
 #
 # USAGE (please manually verify content first!):
@@ -166,6 +166,7 @@ declare -ra REQUIRED_COMMANDS=(
 declare -rA ARCH_MAP=(
   [x86_64]="amd64"
   [aarch64]="arm64"
+  [armv7l]="armv7l"
   [riscv64]="riscv64"
   [ppc64le]="ppc64le"
   [loongarch64]="loong64"
