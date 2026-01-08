@@ -4,6 +4,7 @@
 # - amd64, arm64, ppc64le: Zig cross-compilation
 # - riscv64: RISCstar toolchain (Zig's musl has ABI incompatibility)
 # All builds run in parallel on x86_64 runners
+# Archives use zstd compression (level 19) for best size
 # =============================================================================
 
 name: Release
@@ -152,9 +153,8 @@ jobs:
           # Remove again in case nimble reinstalled nim from registry
           rm -rf ~/.nimble/pkgs2/nim-*
 
-      - name: Install llvm-strip
-        if: matrix.use_riscstar != true
-        run: sudo apt-get update -qq && sudo apt-get install -y -qq llvm
+      - name: Install build tools (llvm-strip, zstd)
+        run: sudo apt-get update -qq && sudo apt-get install -y -qq llvm zstd
 
       - name: Build ${{ matrix.arch }} binary (Zig)
         if: matrix.use_riscstar != true
@@ -223,13 +223,13 @@ jobs:
           # Copy installation instructions
           cp Install.txt "${ARCHIVE_NAME}/"
 
-          # Create tarball
-          tar -czvf "${ARCHIVE_NAME}.tar.gz" "${ARCHIVE_NAME}"
+          # Create tarball with zstd compression (level 19 = highest standard)
+          tar -cvf - "${ARCHIVE_NAME}" | zstd -19 -o "${ARCHIVE_NAME}.tar.zst"
 
           # List contents for verification
           echo ""
           echo "Archive contents:"
-          tar -tzvf "${ARCHIVE_NAME}.tar.gz"
+          zstd -d -c "${ARCHIVE_NAME}.tar.zst" | tar -tvf -
 
           # Output for subsequent steps
           echo "ARCHIVE_NAME=${ARCHIVE_NAME}" >> $GITHUB_ENV
@@ -238,7 +238,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: ${{ env.ARCHIVE_NAME }}
-          path: ${{ env.ARCHIVE_NAME }}.tar.gz
+          path: ${{ env.ARCHIVE_NAME }}.tar.zst
           retention-days: 1
 
   release:
@@ -256,7 +256,7 @@ jobs:
       - name: Generate checksums
         run: |
           cd artifacts
-          sha256sum *.tar.gz > SHA256SUMS
+          sha256sum *.tar.zst > SHA256SUMS
           echo "Generated checksums:"
           cat SHA256SUMS
 
@@ -264,7 +264,7 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           files: |
-            artifacts/*.tar.gz
+            artifacts/*.tar.zst
             artifacts/SHA256SUMS
           generate_release_notes: true
           draft: false

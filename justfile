@@ -221,16 +221,20 @@ test-report:
 # =============================================================================
 
 # Format all source files with nph
-fmt:
+fmt: _clean-generated
     @echo "Formatting source files..."
     nph src/ tests/
     @echo "Formatting complete"
 
 # Check formatting without modifying (CI-friendly)
-fmt-check:
+fmt-check: _clean-generated
     @echo "Checking formatting..."
     nph --check src/ tests/
     @echo "Formatting check passed"
+
+# Remove generated test files (megatest is created by testament)
+_clean-generated:
+    @rm -f tests/megatest.nim tests/megatest
 
 # Show diff of formatting changes
 fmt-diff:

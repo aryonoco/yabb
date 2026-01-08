@@ -9,7 +9,7 @@
 # REQUIREMENTS:
 #   Bash 5.2+
 #   Linux (x86_64, aarch64, riscv64, or ppc64le)
-#   curl, tar, sha256sum
+#   curl, tar, zstd, sha256sum
 #
 # USAGE:
 #   curl -fsSL https://raw.githubusercontent.com/aryonoco/yabb/main/scripts/install.sh | sudo bash
@@ -110,7 +110,7 @@ declare -ri EXIT_INSTALL_FAILED=7
 
 # Required commands
 declare -ra REQUIRED_COMMANDS=(
-  curl tar sha256sum grep uname mkdir rm mv cp chmod mktemp cut
+  curl tar zstd sha256sum grep uname mkdir rm mv cp chmod mktemp cut
 )
 
 # Architecture mapping (uname -m -> release archive suffix)
@@ -571,7 +571,7 @@ download_and_verify() {
   log_step "3/4" "Downloading and verifying release"
 
   local -r version_num="${RESOLVED_VERSION#v}"
-  local -r archive_name="yabb-${version_num}-linux-${ARCH}.tar.gz"
+  local -r archive_name="yabb-${version_num}-linux-${ARCH}.tar.zst"
   local -r archive_url="${GITHUB_DOWNLOAD}/${RESOLVED_VERSION}/${archive_name}"
   local -r checksum_url="${GITHUB_DOWNLOAD}/${RESOLVED_VERSION}/SHA256SUMS"
 
@@ -624,12 +624,12 @@ download_and_verify() {
     log_success "Checksum verified"
   fi
 
-  # Extract archive
+  # Extract archive (zstd compressed)
   log_info "Extracting archive..."
   if [[ ${DRY_RUN} == true ]]; then
     log_info "[DRY-RUN] Would extract: ${archive_path}"
   else
-    tar -xzf "${archive_path}" -C "${TEMP_DIR}" \
+    zstd -d -c "${archive_path}" | tar -xf - -C "${TEMP_DIR}" \
       || die "Failed to extract archive" "${EXIT_INSTALL_FAILED}"
     log_success "Archive extracted"
   fi

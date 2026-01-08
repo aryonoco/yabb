@@ -48,6 +48,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     curl \
     wget \
     xz-utils \
+    zstd \
     git \
     # File watching (for just watch commands)
     entr \
