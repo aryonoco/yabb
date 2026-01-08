@@ -194,3 +194,17 @@ proc getReceivedUuid*(path: string): YabbResult[Opt[string]] =
   if res.value.exitCode != 0:
     return err(btrfsError("Not a valid btrfs subvolume: " & path))
   ok(parseReceivedUuid(res.value.output))
+
+proc isOrphanedDestSnapshot*(path: string): YabbResult[bool] =
+  ## Check if a snapshot is orphaned (no Received UUID = incomplete receive)
+  ## Orphaned snapshots are left behind by failed btrfs receive operations
+  let isSubvol = isSubvolume(path)
+  if isSubvol.isErr or not isSubvol.value:
+    return ok(false) # Not a subvolume, skip
+
+  let recvUuid = getReceivedUuid(path)
+  if recvUuid.isErr:
+    return ok(false) # Cannot determine, skip
+
+  # Orphaned if it's a subvolume with no Received UUID
+  ok(recvUuid.value.isNone)

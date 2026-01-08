@@ -501,10 +501,17 @@ proc createBackupSnapshot*(
     info "Performing full snapshot send"
 
   # Stream btrfs send | pv | btrfs receive (no temp files)
+  let destPath = $config.dstDir / snapshotName
   let streamRes = retry(
     config.retryCount,
     config.retryDelay,
     proc(): YabbResult[void] {.raises: [].} =
+      # Clean up partial destination snapshot from previous failed attempt
+      if dirExists(destPath):
+        let isOrphan = isOrphanedDestSnapshot(destPath)
+        if isOrphan.isOk and isOrphan.value:
+          debug "Cleaning up partial destination snapshot before retry", path = destPath
+          discard deleteSubvolume(destPath, config.dryRun)
       runBtrfsSendReceive(sendArgs, $config.dstDir, config.dryRun),
     "Streaming snapshot to destination",
   )
@@ -534,7 +541,6 @@ proc createBackupSnapshot*(
     return err(verifyRes.error)
 
   # Verify the destination snapshot (btrfs send preserves xattrs)
-  let destPath = $config.dstDir / snapshotName
   let destVerifyRes = verifySnapshot(destPath, config)
   if destVerifyRes.isErr:
     return err(
