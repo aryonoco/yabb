@@ -287,10 +287,10 @@ jobs:
         if: matrix.toolchain == 'bootlin'
         run: |
           echo "Cross-compiling for ${{ matrix.arch }} using Bootlin..."
-          # Create symlinks for Nim cross-compilation (expects arm-linux-gnueabi-*)
+          # Create symlinks for Nim cross-compilation (--cpu:arm expects arm-linux-gnueabihf-*)
           cd ~/armv5-toolchain/bin
           for tool in gcc g++ ar ld strip objcopy objdump ranlib nm readelf; do
-            ln -sf "arm-buildroot-linux-musleabi-$tool" "arm-linux-gnueabi-$tool"
+            ln -sf "arm-buildroot-linux-musleabi-$tool" "arm-linux-gnueabihf-$tool"
           done
           cd /home/runner/work/yabb/yabb
           nim c -d:release --opt:speed --mm:orc -d:lto \
