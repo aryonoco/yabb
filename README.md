@@ -56,16 +56,16 @@ because the tools above aren't good.
 ### Automatic (recommended)
 
 ```bash
-curl -fsSL --proto '=https' --tlsv1.2 https://raw.githubusercontent.com/aryonoco/yabb/main/scripts/install.sh | sudo bash
+curl -fsSL --proto '=https' --tlsv1.2 https://raw.githubusercontent.com/aryonoco/yabb/main/scripts/setup-yabb.sh | sudo bash
 # Edit /etc/yabb.toml with your paths (installed automatically)
-sudo systemctl enable --now yabb.timer yabb-update.timer
+sudo systemctl enable --now yabb.timer
 ```
 
-The installer automatically installs config, shell completions, and systemd files to their proper system locations. It never overwrites existing files.
+The installer automatically installs config, shell completions, and systemd files to their proper system locations. It never overwrites existing config files.
 
-To update: `sudo /opt/yabb/scripts/install.sh --force`
+To update: `sudo /opt/yabb/scripts/setup-yabb.sh`
 
-To uninstall: `sudo /opt/yabb/scripts/install.sh --remove`
+To uninstall: `sudo /opt/yabb/scripts/setup-yabb.sh --remove`
 
 ### Build from source
 
@@ -146,8 +146,8 @@ sudo mkdir -p /etc/systemd/system/yabb.service.d
 echo -e '[Service]\nReadWritePaths=/data /backup /snapshots' | sudo tee /etc/systemd/system/yabb.service.d/paths.conf
 sudo systemctl daemon-reload
 
-# Enable daily backups and weekly updates
-sudo systemctl enable --now yabb.timer yabb-update.timer
+# Enable daily backups
+sudo systemctl enable --now yabb.timer
 ```
 
 Check status: `systemctl list-timers yabb*`
@@ -226,6 +226,12 @@ I'm publishing this because it works for me, not because of how it was written.
 
 ## License
 
-MPL-2.0. See [LICENSE](LICENSE).
+Copyright 2023-2026 Aryan Ameri. All rights reserved.
 
-Copyright 2023-2026 Aryan Ameri
+This project uses two licenses:
+
+- **Code** (all files except those in `/docs` and `*.md` and `*.txt` files):
+  [Mozilla Public License 2.0](LICENSE)
+
+- **Documentation** (contents of `/docs` directory and all `*.md` and `*.md` files):
+  [Creative Commons Attribution 4.0 International](LICENSE-DOCS)

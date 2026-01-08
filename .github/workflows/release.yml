@@ -1,3 +1,10 @@
+# SPDX-License-Identifier: MPL-2.0
+# Copyright (c) 2023-2026 Aryan Ameri
+#
+# This Source Code Form is subject to the terms of the Mozilla Public
+# License, v. 2.0. If a copy of the MPL was not distributed with this
+# file, You can obtain one at https://mozilla.org/MPL/2.0/.
+#
 # =============================================================================
 # YABB Release Workflow
 # Cross-compiles static binaries for all architectures
@@ -22,7 +29,7 @@ jobs:
     name: Build ${{ matrix.arch }}
     runs-on: ubuntu-latest
     strategy:
-      fail-fast: false  # Don't cancel other builds if one fails
+      fail-fast: false # Don't cancel other builds if one fails
       matrix:
         include:
           - arch: amd64
@@ -225,16 +232,13 @@ jobs:
 
           # Create scripts directory and copy scripts
           mkdir -p "${ARCHIVE_NAME}/scripts"
-          cp scripts/install.sh "${ARCHIVE_NAME}/scripts/"
-          chmod +x "${ARCHIVE_NAME}/scripts/install.sh"
-          cp scripts/yabb-update.conf "${ARCHIVE_NAME}/scripts/"
+          cp scripts/setup-yabb.sh "${ARCHIVE_NAME}/scripts/"
+          chmod +x "${ARCHIVE_NAME}/scripts/setup-yabb.sh"
           cp scripts/yabb.service "${ARCHIVE_NAME}/scripts/"
           cp scripts/yabb.timer "${ARCHIVE_NAME}/scripts/"
-          cp scripts/yabb-update.service "${ARCHIVE_NAME}/scripts/"
-          cp scripts/yabb-update.timer "${ARCHIVE_NAME}/scripts/"
 
-          # Create symlink for install.sh at root
-          ln -s scripts/install.sh "${ARCHIVE_NAME}/install.sh"
+          # Create symlink for setup-yabb.sh at root
+          ln -s scripts/setup-yabb.sh "${ARCHIVE_NAME}/setup-yabb.sh"
 
           # Copy and rename sample config
           cp config/yabb.toml.example "${ARCHIVE_NAME}/yabb.conf"

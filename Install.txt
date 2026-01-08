@@ -1,3 +1,4 @@
+SPDX-License-Identifier: CC-BY-4.0
 ================================================================================
 YABB - Yet Another BTRFS Backup
 Installation Guide
@@ -32,17 +33,18 @@ This downloads the latest release, verifies checksums, and installs:
   - Shell completions to system locations (bash, zsh, fish)
   - Systemd service files to /etc/systemd/system/
 
-The installer is CONSERVATIVE: it never overwrites existing files.
+The installer is CONSERVATIVE: it never overwrites existing config files.
+Shell completions and systemd units are always updated to ensure bug fixes.
 
 1. Run the installer:
 
-   curl -fsSL --proto '=https' --tlsv1.2 https://raw.githubusercontent.com/aryonoco/yabb/main/scripts/install.sh | sudo bash
+   curl -fsSL --proto '=https' --tlsv1.2 https://raw.githubusercontent.com/aryonoco/yabb/main/scripts/setup-yabb.sh | sudo bash
 
    Or download and inspect first:
 
-   curl -fsSL --proto '=https' --tlsv1.2 https://raw.githubusercontent.com/aryonoco/yabb/main/scripts/install.sh -o install.sh
-   less install.sh  # Review the script
-   sudo bash install.sh
+   curl -fsSL --proto '=https' --tlsv1.2 https://raw.githubusercontent.com/aryonoco/yabb/main/scripts/setup-yabb.sh -o setup-yabb.sh
+   less setup-yabb.sh  # Review the script
+   sudo bash setup-yabb.sh
 
 2. Edit your configuration file:
 
@@ -57,29 +59,27 @@ The installer is CONSERVATIVE: it never overwrites existing files.
 
    /opt/yabb/yabb --help
 
-4. Enable automated backups and updates:
+4. Enable automated backups:
 
-   sudo systemctl enable --now yabb.timer yabb-update.timer
+   sudo systemctl enable --now yabb.timer
 
 
 UPDATING YABB
 -------------
 To update to the latest version:
 
-   sudo /opt/yabb/scripts/install.sh --force
-
-Or use the systemd timer for automatic weekly updates (see SYSTEMD section below).
+   sudo /opt/yabb/scripts/setup-yabb.sh
 
 
 UNINSTALLING YABB
 -----------------
 Remove YABB but keep configuration:
 
-   sudo /opt/yabb/scripts/install.sh --remove
+   sudo /opt/yabb/scripts/setup-yabb.sh --remove
 
 Remove YABB and all configuration:
 
-   sudo /opt/yabb/scripts/install.sh --remove --purge --force
+   sudo /opt/yabb/scripts/setup-yabb.sh --remove --purge --force
 
 
 ================================================================================
@@ -254,26 +254,22 @@ QUICK START
 SYSTEMD AUTOMATION (Recommended)
 ================================================================================
 
-YABB includes hardened systemd service files for automated backups and updates.
+YABB includes hardened systemd service files for automated backups.
 These use modern systemd 257 features for security hardening.
 
 ENABLING THE TIMERS
 -------------------
 If you used the automatic installer (Option A), the systemd service files are
-ALREADY installed to /etc/systemd/system/. Just enable the timers:
+ALREADY installed to /etc/systemd/system/. Just enable the timer:
 
-   sudo systemctl enable --now yabb.timer yabb-update.timer
+   sudo systemctl enable --now yabb.timer
 
 If you installed from tarball (Option B/C), copy the service files first:
 
    sudo cp yabb-*/scripts/yabb.service /etc/systemd/system/
    sudo cp yabb-*/scripts/yabb.timer /etc/systemd/system/
-   sudo cp yabb-*/scripts/yabb-update.service /etc/systemd/system/
-   sudo cp yabb-*/scripts/yabb-update.timer /etc/systemd/system/
-   sudo mkdir -p /etc/yabb
-   sudo cp yabb-*/scripts/yabb-update.conf /etc/yabb/update.conf
    sudo systemctl daemon-reload
-   sudo systemctl enable --now yabb.timer yabb-update.timer
+   sudo systemctl enable --now yabb.timer
 
 
 WHAT THE SERVICES DO
@@ -282,11 +278,6 @@ yabb.timer / yabb.service:
   - Runs daily BTRFS backup
   - Low CPU/IO priority to avoid impacting other work
   - Comprehensive security hardening
-
-yabb-update.timer / yabb-update.service:
-  - Runs weekly to check for and install YABB updates
-  - Network access limited to GitHub only
-  - Verifies SHA256 checksums before installing
 
 
 CONFIGURING BACKUP PATHS
@@ -315,17 +306,12 @@ View timer status:
 
 View service logs:
    journalctl -u yabb.service
-   journalctl -u yabb-update.service
 
 Run backup manually:
    sudo systemctl start yabb.service
 
-Run update manually:
-   sudo systemctl start yabb-update.service
-
 Check security score:
    systemd-analyze security yabb.service
-   systemd-analyze security yabb-update.service
 
 
 ================================================================================
