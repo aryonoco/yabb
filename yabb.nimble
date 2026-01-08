@@ -1,6 +1,6 @@
 # Package
 
-version = "0.4.8"
+version = "0.4.9"
 author = "Aryan Ameri"
 description = "Yet Another BTRFS Backup"
 license = "MPL 2.0"
@@ -143,9 +143,9 @@ task releasePpc64le, "Build static binary for PowerPC 64-bit LE Linux":
 
 task releaseLoong64, "Build static binary for LoongArch64 Linux":
   exec "nim c " & releaseFlags & " " & zigccFlags & " " & "--cpu:loongarch64 " &
-    "--passC:'-target loongarch64-linux-musl' " & "--passL:'-target loongarch64-linux-musl' " &
-    "--passC:-march=loongarch64 " & ltoFlags &
-    " -o:bin/yabb-linux-loong64 src/yabb.nim"
+    "--passC:'-target loongarch64-linux-musl' " &
+    "--passL:'-target loongarch64-linux-musl' " & "--passC:-march=loongarch64 " &
+    ltoFlags & " -o:bin/yabb-linux-loong64 src/yabb.nim"
   exec "llvm-strip -s bin/yabb-linux-loong64"
   echo "Built: bin/yabb-linux-loong64"
 

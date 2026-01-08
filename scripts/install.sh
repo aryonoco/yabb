@@ -672,13 +672,43 @@ install_files() {
       if [[ ${DRY_RUN} == true ]]; then
         log_info "[DRY-RUN] Would install: ${INSTALL_DIR}/${comp}"
         installed+=1
-      elif [[ -f ${extract_dir}/${comp} ]]; then
-        cp "${extract_dir}/${comp}" "${INSTALL_DIR}/"
+      elif [[ -f ${extract_dir}/shell_completions/${comp} ]]; then
+        cp "${extract_dir}/shell_completions/${comp}" "${INSTALL_DIR}/"
         register_created_file "${INSTALL_DIR}/${comp}"
         installed+=1
       fi
     done
     log_success "Installed ${installed} completion file(s) to ${INSTALL_DIR}/"
+  fi
+
+  # Install systemd service files
+  log_info "Installing systemd service files..."
+  local -a systemd_files=(
+    "yabb.service"
+    "yabb.timer"
+    "yabb-update.service"
+    "yabb-update.timer"
+    "yabb-update.conf"
+  )
+  local sfile
+  for sfile in "${systemd_files[@]}"; do
+    if [[ ${DRY_RUN} == true ]]; then
+      log_info "[DRY-RUN] Would install: ${INSTALL_DIR}/${sfile}"
+    elif [[ -f ${extract_dir}/scripts/${sfile} ]]; then
+      cp "${extract_dir}/scripts/${sfile}" "${INSTALL_DIR}/"
+      register_created_file "${INSTALL_DIR}/${sfile}"
+    fi
+  done
+  log_success "Installed systemd files to ${INSTALL_DIR}/"
+
+  # Install install.sh itself for future updates
+  if [[ ${DRY_RUN} == true ]]; then
+    log_info "[DRY-RUN] Would install: ${INSTALL_DIR}/install.sh"
+  elif [[ -f ${extract_dir}/scripts/install.sh ]]; then
+    cp "${extract_dir}/scripts/install.sh" "${INSTALL_DIR}/"
+    chmod +x "${INSTALL_DIR}/install.sh"
+    register_created_file "${INSTALL_DIR}/install.sh"
+    log_success "Installed: ${INSTALL_DIR}/install.sh"
   fi
 
   # Handle configuration
@@ -783,13 +813,19 @@ remove_step_binary() {
 }
 
 remove_step_completions() {
-  log_step "2/3" "Removing shell completions and sample config"
+  log_step "2/3" "Removing shell completions, systemd files, and sample config"
 
   local -a files_to_remove=(
     "${INSTALL_DIR}/yabb.bash"
     "${INSTALL_DIR}/yabb.fish"
     "${INSTALL_DIR}/yabb.zsh"
     "${INSTALL_DIR}/yabb.conf"
+    "${INSTALL_DIR}/yabb.service"
+    "${INSTALL_DIR}/yabb.timer"
+    "${INSTALL_DIR}/yabb-update.service"
+    "${INSTALL_DIR}/yabb-update.timer"
+    "${INSTALL_DIR}/yabb-update.conf"
+    "${INSTALL_DIR}/install.sh"
   )
 
   local file

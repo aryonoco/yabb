@@ -82,7 +82,7 @@ Use this if you downloaded the release tarball manually.
 
 1. Extract and install the binary:
 
-   tar xzf yabb-*.tar.gz
+   zstd -d -c yabb-*.tar.zst | tar -xf -
    mkdir -p ~/.local/bin
    cp yabb-*/yabb ~/.local/bin/
    chmod +x ~/.local/bin/yabb
@@ -126,17 +126,17 @@ SHELL COMPLETIONS (User Installation)
 -------------------------------------
 For Bash (add to ~/.bashrc):
    mkdir -p ~/.local/share/bash-completion/completions
-   cp yabb-*/yabb.bash ~/.local/share/bash-completion/completions/yabb
+   cp yabb-*/shell_completions/yabb.bash ~/.local/share/bash-completion/completions/yabb
    # Restart your shell or run: source ~/.local/share/bash-completion/completions/yabb
 
 For Zsh (add to ~/.zshrc):
    mkdir -p ~/.local/share/zsh/site-functions
-   cp yabb-*/yabb.zsh ~/.local/share/zsh/site-functions/_yabb
+   cp yabb-*/shell_completions/yabb.zsh ~/.local/share/zsh/site-functions/_yabb
    # Restart your shell or run: exec zsh
 
 For Fish:
    mkdir -p ~/.config/fish/completions
-   cp yabb-*/yabb.fish ~/.config/fish/completions/yabb.fish
+   cp yabb-*/shell_completions/yabb.fish ~/.config/fish/completions/yabb.fish
    # Restart your shell or run: exec fish
 
 
@@ -148,7 +148,7 @@ This installs yabb for all users on the system.
 
 1. Extract and install to /opt:
 
-   tar xzf yabb-*.tar.gz
+   zstd -d -c yabb-*.tar.zst | tar -xf -
    sudo mkdir -p /opt/yabb
    sudo cp yabb-*/yabb /opt/yabb/
    sudo chmod +x /opt/yabb/yabb
@@ -179,17 +179,17 @@ This installs yabb for all users on the system.
 SHELL COMPLETIONS (System-Wide)
 -------------------------------
 For Bash:
-   sudo cp yabb-*/yabb.bash /etc/bash_completion.d/yabb
+   sudo cp yabb-*/shell_completions/yabb.bash /etc/bash_completion.d/yabb
    # Restart your shell or run: source /etc/bash_completion.d/yabb
 
 For Zsh:
    sudo mkdir -p /usr/local/share/zsh/site-functions
-   sudo cp yabb-*/yabb.zsh /usr/local/share/zsh/site-functions/_yabb
+   sudo cp yabb-*/shell_completions/yabb.zsh /usr/local/share/zsh/site-functions/_yabb
    # Restart your shell or run: exec zsh
 
 For Fish:
    sudo mkdir -p /usr/share/fish/vendor_completions.d
-   sudo cp yabb-*/yabb.fish /usr/share/fish/vendor_completions.d/yabb.fish
+   sudo cp yabb-*/shell_completions/yabb.fish /usr/share/fish/vendor_completions.d/yabb.fish
    # Restart your shell or run: exec fish
 
 
@@ -261,6 +261,16 @@ in /opt/yabb/. Copy them to systemd:
    # Optional: create update config directory
    sudo mkdir -p /etc/yabb
    sudo cp /opt/yabb/yabb-update.conf /etc/yabb/update.conf
+
+If you installed from tarball (Option B/C), the service files are in the
+scripts/ directory of the extracted archive:
+
+   sudo cp yabb-*/scripts/yabb.service /etc/systemd/system/
+   sudo cp yabb-*/scripts/yabb.timer /etc/systemd/system/
+   sudo cp yabb-*/scripts/yabb-update.service /etc/systemd/system/
+   sudo cp yabb-*/scripts/yabb-update.timer /etc/systemd/system/
+   sudo mkdir -p /etc/yabb
+   sudo cp yabb-*/scripts/yabb-update.conf /etc/yabb/update.conf
 
 Reload systemd and enable the timers:
 
