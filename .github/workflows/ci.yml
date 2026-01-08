@@ -54,6 +54,7 @@ jobs:
           echo "Installing Zig ${{ env.ZIG_VERSION }}..."
           curl -LO "https://ziglang.org/download/${{ env.ZIG_VERSION }}/zig-x86_64-linux-${{ env.ZIG_VERSION }}.tar.xz"
           tar xf "zig-x86_64-linux-${{ env.ZIG_VERSION }}.tar.xz"
+          rm -rf zig
           mv "zig-x86_64-linux-${{ env.ZIG_VERSION }}" zig
           rm -f "zig-x86_64-linux-${{ env.ZIG_VERSION }}.tar.xz"
           echo "Zig ${{ env.ZIG_VERSION }} installed successfully"
