@@ -155,6 +155,7 @@ release: && _clean-cache
         x86_64)  nimble releaseAmd64 && cp bin/yabb-linux-amd64 bin/yabb ;;
         aarch64) nimble releaseArm64 && cp bin/yabb-linux-arm64 bin/yabb ;;
         armv7l)  nimble releaseArmv7l && cp bin/yabb-linux-armv7l bin/yabb ;;
+        armv5l)  echo "ERROR: ARMv5 builds are CI-only (Bootlin toolchain)" && exit 1 ;;
         riscv64) nimble releaseRiscv64 && cp bin/yabb-linux-riscv64 bin/yabb ;;
         ppc64le) nimble releasePpc64le && cp bin/yabb-linux-ppc64le bin/yabb ;;
         loongarch64) nimble releaseLoong64 && cp bin/yabb-linux-loong64 bin/yabb ;;
@@ -186,6 +187,14 @@ build-armv7l:
     @echo "Cross-compiling for ARMv7 (armhf)..."
     nimble releaseArmv7l
 
+# Build for ARMv5 Linux (static musl, soft-float - Debian armel)
+# NOTE: CI-only - Bootlin toolchain not available locally
+build-armv5l:
+    @echo "Cross-compiling for ARMv5 (armel) - CI only..."
+    @echo "ERROR: ARMv5 builds require Bootlin toolchain (amd64-only)"
+    @echo "This target is only available in GitHub Actions CI"
+    @exit 1
+
 # Build for RISC-V 64-bit Linux (static musl, lp64d hard-float)
 # Uses RISCstar toolchain - works on both x86-64 and ARM64 hosts
 build-riscv64:
@@ -203,9 +212,10 @@ build-loong64:
     nimble releaseLoong64
 
 # Release binaries for all Linux architectures (amd64, arm64, armv7l, riscv64, ppc64le, loong64)
+# Note: armv5l is CI-only (Bootlin toolchain not available locally)
 release-all: build-amd64 build-arm64 build-armv7l build-riscv64 build-ppc64le build-loong64
     @echo ""
-    @echo "All architectures built:"
+    @echo "All architectures built (armv5l is CI-only):"
     @ls -lh bin/yabb-linux-* 2>/dev/null || echo "No binaries found"
 
 # =============================================================================

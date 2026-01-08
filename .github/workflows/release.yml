@@ -10,6 +10,7 @@
 # Cross-compiles static binaries for all architectures
 # - amd64, arm64, armv7l, ppc64le, loong64: Zig cross-compilation
 # - riscv64: RISCstar toolchain (Zig's musl has ABI incompatibility)
+# - armv5l: Bootlin toolchain (Zig's musl emits NEON instructions)
 # Note: armv7l requires NEON (Zig's musl is compiled with NEON optimisations)
 # All builds run in parallel on x86_64 runners
 # Archives use zstd compression (level 19) for best size
@@ -37,26 +38,33 @@ jobs:
             target: x86_64-linux-musl
             nimcpu: ""
             march: "-march=x86_64 -mno-avx -mno-avx2"
+            toolchain: zig
           - arch: arm64
             target: aarch64-linux-musl
             nimcpu: "--cpu:arm64"
             march: "-march=armv8-a -mtune=cortex_a72"
+            toolchain: zig
           - arch: armv7l
             target: arm-linux-musleabihf
             nimcpu: "--cpu:arm"
             march: "-mcpu=baseline"
+            toolchain: zig
           - arch: riscv64
             nimcpu: "--cpu:riscv64"
-            # Uses RISCstar toolchain instead of Zig (Zig's musl has soft-float ABI)
-            use_riscstar: true
+            toolchain: riscstar
           - arch: ppc64le
             target: powerpc64le-linux-musl
             nimcpu: "--cpu:powerpc64"
             march: "-mcpu=pwr8 -mtune=pwr9"
+            toolchain: zig
           - arch: loong64
             target: loongarch64-linux-musl
             nimcpu: "--cpu:loongarch64"
             march: "-march=loongarch64"
+            toolchain: zig
+          - arch: armv5l
+            nimcpu: "--cpu:arm"
+            toolchain: bootlin
 
     steps:
       - name: Checkout code
@@ -70,47 +78,105 @@ jobs:
             echo "NIM_VERSION=$NIM_VERSION" >> $GITHUB_ENV
             echo "ZIG_VERSION=$ZIG_VERSION" >> $GITHUB_ENV
             echo "RISCSTAR_VERSION=$RISCSTAR_VERSION" >> $GITHUB_ENV
-            echo "Loaded: NIM=$NIM_VERSION, ZIG=$ZIG_VERSION, RISCSTAR=$RISCSTAR_VERSION"
+            echo "BOOTLIN_ARMV5_VERSION=$BOOTLIN_ARMV5_VERSION" >> $GITHUB_ENV
+            echo "Loaded: NIM=$NIM_VERSION, ZIG=$ZIG_VERSION, RISCSTAR=$RISCSTAR_VERSION, BOOTLIN=$BOOTLIN_ARMV5_VERSION"
           else
             echo "ERROR: versions.env not found"
             exit 1
           fi
 
-      - name: Cache Nim + Zig toolchain
+      - name: Cache Nim + toolchain
         uses: actions/cache@v4
         id: toolchain-cache
         with:
           path: |
             ~/nim-${{ env.NIM_VERSION }}
-            ~/zig
             ~/.nimble/bin
             ~/.nimble/pkgs2
-          key: release-${{ env.NIM_VERSION }}-${{ env.ZIG_VERSION }}-${{ hashFiles('*.nimble') }}
+            ${{ matrix.toolchain == 'zig' && '~/zig' || '' }}
+            ${{ matrix.toolchain == 'riscstar' && '~/riscv64-toolchain' || '' }}
+            ${{ matrix.toolchain == 'bootlin' && '~/armv5-toolchain' || '' }}
+          key: release-nim-${{ env.NIM_VERSION }}-${{ matrix.toolchain }}-${{ matrix.toolchain == 'zig' && env.ZIG_VERSION || matrix.toolchain == 'riscstar' && env.RISCSTAR_VERSION || env.BOOTLIN_ARMV5_VERSION }}-${{ hashFiles('*.nimble') }}
           restore-keys: |
-            release-${{ env.NIM_VERSION }}-${{ env.ZIG_VERSION }}-
+            release-nim-${{ env.NIM_VERSION }}-${{ matrix.toolchain }}-
 
       - name: Install Zig
-        if: steps.toolchain-cache.outputs.cache-hit != 'true' && matrix.use_riscstar != true
+        if: matrix.toolchain == 'zig' && steps.toolchain-cache.outputs.cache-hit != 'true'
         run: |
           cd ~
+          ZIG_FILE="zig-x86_64-linux-${{ env.ZIG_VERSION }}.tar.xz"
+
           echo "Installing Zig ${{ env.ZIG_VERSION }}..."
-          curl -LO "https://ziglang.org/download/${{ env.ZIG_VERSION }}/zig-x86_64-linux-${{ env.ZIG_VERSION }}.tar.xz"
-          tar xf "zig-x86_64-linux-${{ env.ZIG_VERSION }}.tar.xz"
+
+          # Get expected SHA256 from Zig's official JSON API
+          echo "Fetching checksum from Zig JSON API..."
+          EXPECTED_SHA=$(curl -fsSL --proto '=https' --tlsv1.2 \
+            "https://ziglang.org/download/index.json" | \
+            jq -r '."${{ env.ZIG_VERSION }}"."x86_64-linux".shasum')
+
+          if [ -z "$EXPECTED_SHA" ] || [ "$EXPECTED_SHA" = "null" ]; then
+            echo "ERROR: Could not fetch checksum for Zig ${{ env.ZIG_VERSION }}"
+            exit 1
+          fi
+          echo "Expected SHA256: $EXPECTED_SHA"
+
+          # Download tarball
+          curl -fsSL --proto '=https' --tlsv1.2 \
+            -o "${ZIG_FILE}" \
+            "https://ziglang.org/download/${{ env.ZIG_VERSION }}/${ZIG_FILE}"
+
+          # Verify checksum
+          echo "Verifying SHA256 checksum..."
+          echo "$EXPECTED_SHA  $ZIG_FILE" | sha256sum -c -
+
+          # Extract
+          tar xf "${ZIG_FILE}"
           rm -rf zig
           mv "zig-x86_64-linux-${{ env.ZIG_VERSION }}" zig
-          rm -f "zig-x86_64-linux-${{ env.ZIG_VERSION }}.tar.xz"
-          echo "Zig ${{ env.ZIG_VERSION }} installed successfully"
+          rm -f "${ZIG_FILE}"
+          echo "Zig ${{ env.ZIG_VERSION }} installed and verified successfully"
 
       - name: Install RISCstar RISC-V64 toolchain
-        if: matrix.use_riscstar == true
+        if: matrix.toolchain == 'riscstar' && steps.toolchain-cache.outputs.cache-hit != 'true'
         run: |
           cd ~
           echo "Installing RISCstar RISC-V64 toolchain ${{ env.RISCSTAR_VERSION }}..."
-          curl --tlsv1.2 -LO "https://releases.riscstar.com/toolchain/${{ env.RISCSTAR_VERSION }}/riscstar-toolchain-${{ env.RISCSTAR_VERSION }}+qemu-x86_64-riscv64-none-linux-musl.tar.xz"
+          # NOTE: RISCstar does not publish checksums - using TLS for transport security only
+          curl -fsSL --proto '=https' --tlsv1.2 \
+            -o "riscstar-toolchain.tar.xz" \
+            "https://releases.riscstar.com/toolchain/${{ env.RISCSTAR_VERSION }}/riscstar-toolchain-${{ env.RISCSTAR_VERSION }}+qemu-x86_64-riscv64-none-linux-musl.tar.xz"
           mkdir -p riscv64-toolchain
-          tar xf "riscstar-toolchain-${{ env.RISCSTAR_VERSION }}+qemu-x86_64-riscv64-none-linux-musl.tar.xz" -C riscv64-toolchain --strip-components=1
-          rm -f "riscstar-toolchain-${{ env.RISCSTAR_VERSION }}+qemu-x86_64-riscv64-none-linux-musl.tar.xz"
+          tar xf "riscstar-toolchain.tar.xz" -C riscv64-toolchain --strip-components=1
+          rm -f "riscstar-toolchain.tar.xz"
           echo "RISCstar ${{ env.RISCSTAR_VERSION }} installed successfully"
+
+      - name: Install Bootlin ARMv5 toolchain
+        if: matrix.toolchain == 'bootlin' && steps.toolchain-cache.outputs.cache-hit != 'true'
+        run: |
+          cd ~
+          TOOLCHAIN_URL="https://toolchains.bootlin.com/downloads/releases/toolchains/armv5-eabi/tarballs"
+          TOOLCHAIN_FILE="${{ env.BOOTLIN_ARMV5_VERSION }}.tar.xz"
+
+          echo "Installing Bootlin ARMv5 toolchain ${{ env.BOOTLIN_ARMV5_VERSION }}..."
+
+          # Secure download: HTTPS-only, TLS 1.2 minimum, fail on errors
+          echo "Downloading toolchain and checksum..."
+          curl -fsSL --proto '=https' --tlsv1.2 \
+            -o "${TOOLCHAIN_FILE}" \
+            "${TOOLCHAIN_URL}/${TOOLCHAIN_FILE}"
+          curl -fsSL --proto '=https' --tlsv1.2 \
+            -o "${TOOLCHAIN_FILE}.sha256" \
+            "${TOOLCHAIN_URL}/${TOOLCHAIN_FILE}.sha256"
+
+          # Verify SHA256 checksum
+          echo "Verifying SHA256 checksum..."
+          sha256sum -c "${TOOLCHAIN_FILE}.sha256"
+
+          # Extract toolchain
+          mkdir -p armv5-toolchain
+          tar xf "${TOOLCHAIN_FILE}" -C armv5-toolchain --strip-components=1
+          rm -f "${TOOLCHAIN_FILE}" "${TOOLCHAIN_FILE}.sha256"
+          echo "Bootlin ${{ env.BOOTLIN_ARMV5_VERSION }} installed and verified successfully"
 
       - name: Install Nim from source
         if: steps.toolchain-cache.outputs.cache-hit != 'true'
@@ -132,14 +198,14 @@ jobs:
         run: |
           echo "$HOME/nim-${{ env.NIM_VERSION }}/bin" >> $GITHUB_PATH
           echo "$HOME/.nimble/bin" >> $GITHUB_PATH
-          if [ "${{ matrix.use_riscstar }}" = "true" ]; then
-            echo "$HOME/riscv64-toolchain/bin" >> $GITHUB_PATH
-          else
-            echo "$HOME/zig" >> $GITHUB_PATH
-          fi
+          case "${{ matrix.toolchain }}" in
+            zig)      echo "$HOME/zig" >> $GITHUB_PATH ;;
+            riscstar) echo "$HOME/riscv64-toolchain/bin" >> $GITHUB_PATH ;;
+            bootlin)  echo "$HOME/armv5-toolchain/bin" >> $GITHUB_PATH ;;
+          esac
 
       - name: Install zigcc
-        if: matrix.use_riscstar != true
+        if: matrix.toolchain == 'zig'
         run: |
           if ! command -v zigcc &> /dev/null; then
             nimble install -y zigcc
@@ -147,7 +213,7 @@ jobs:
           zigcc --version
 
       - name: Verify toolchain (Zig)
-        if: matrix.use_riscstar != true
+        if: matrix.toolchain == 'zig'
         run: |
           nim --version
           nimble --version
@@ -155,11 +221,18 @@ jobs:
           zigcc --version
 
       - name: Verify toolchain (RISCstar)
-        if: matrix.use_riscstar == true
+        if: matrix.toolchain == 'riscstar'
         run: |
           nim --version
           nimble --version
           riscv64-none-linux-musl-gcc --version
+
+      - name: Verify toolchain (Bootlin)
+        if: matrix.toolchain == 'bootlin'
+        run: |
+          nim --version
+          nimble --version
+          arm-buildroot-linux-musleabi-gcc --version
 
       - name: Install project dependencies
         run: |
@@ -170,11 +243,12 @@ jobs:
           # Remove again in case nimble reinstalled nim from registry
           rm -rf ~/.nimble/pkgs2/nim-*
 
-      - name: Install build tools (llvm-strip, zstd)
-        run: sudo apt-get update -qq && sudo apt-get install -y -qq llvm zstd
+      - name: Install build tools (llvm-strip)
+        if: matrix.toolchain == 'zig'
+        run: sudo apt-get update -qq && sudo apt-get install -y -qq llvm
 
       - name: Build ${{ matrix.arch }} binary (Zig)
-        if: matrix.use_riscstar != true
+        if: matrix.toolchain == 'zig'
         run: |
           echo "Cross-compiling for ${{ matrix.arch }} using Zig..."
           nim c -d:release --opt:speed --mm:orc -d:lto \
@@ -189,7 +263,7 @@ jobs:
           echo "Built: bin/yabb (${{ matrix.arch }})"
 
       - name: Build ${{ matrix.arch }} binary (RISCstar)
-        if: matrix.use_riscstar == true
+        if: matrix.toolchain == 'riscstar'
         run: |
           echo "Cross-compiling for ${{ matrix.arch }} using RISCstar..."
           # Create symlinks for Nim cross-compilation (expects riscv64-linux-gnu-*)
@@ -206,6 +280,32 @@ jobs:
             --passC:-O3 --passC:-march=rv64gc \
             -o:bin/yabb src/yabb.nim
           riscv64-none-linux-musl-strip -s bin/yabb
+          echo "Built: bin/yabb (${{ matrix.arch }})"
+
+      - name: Build ${{ matrix.arch }} binary (Bootlin)
+        if: matrix.toolchain == 'bootlin'
+        run: |
+          echo "Cross-compiling for ${{ matrix.arch }} using Bootlin..."
+          # Create symlinks for Nim cross-compilation (expects arm-linux-gnueabi-*)
+          cd ~/armv5-toolchain/bin
+          for tool in gcc g++ ar ld strip objcopy objdump ranlib nm readelf; do
+            ln -sf "arm-buildroot-linux-musleabi-$tool" "arm-linux-gnueabi-$tool"
+          done
+          cd /home/runner/work/yabb/yabb
+          nim c -d:release --opt:speed --mm:orc -d:lto \
+            ${{ matrix.nimcpu }} \
+            --gcc.exe:arm-buildroot-linux-musleabi-gcc \
+            --gcc.linkerexe:arm-buildroot-linux-musleabi-gcc \
+            --passL:-static \
+            --passC:-O3 \
+            --passC:-march=armv5t \
+            --passC:-mfloat-abi=soft \
+            --passC:-mabi=aapcs-linux \
+            --passC:-ffunction-sections \
+            --passC:-fdata-sections \
+            --passL:-Wl,--gc-sections \
+            -o:bin/yabb src/yabb.nim
+          arm-buildroot-linux-musleabi-strip --strip-all bin/yabb
           echo "Built: bin/yabb (${{ matrix.arch }})"
 
       - name: Verify binary

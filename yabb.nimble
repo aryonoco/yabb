@@ -7,7 +7,7 @@
 #
 # Package
 
-version = "0.4.19"
+version = "0.4.20"
 author = "Aryan Ameri"
 description = "Yet Another BTRFS Backup"
 license = "MPL 2.0"
@@ -136,6 +136,20 @@ task releaseArmv7l, "Build static binary for ARMv7 Linux (armhf)":
     "--passC:-mcpu=baseline " & ltoFlags & " -o:bin/yabb-linux-armv7l src/yabb.nim"
   exec "llvm-strip -s bin/yabb-linux-armv7l"
   echo "Built: bin/yabb-linux-armv7l"
+
+task releaseArmv5l, "Build static binary for ARMv5 Linux (armel - CI only)":
+  # Debian armel: ARMv5T baseline, soft-float EABI
+  # Uses Bootlin musl toolchain (CI-only, not available locally)
+  # See: https://wiki.debian.org/ArmEabiPort
+  exec "nim c -d:release --opt:speed --mm:orc -d:lto " & "--cpu:arm " &
+    "--gcc.exe:arm-buildroot-linux-musleabi-gcc " &
+    "--gcc.linkerexe:arm-buildroot-linux-musleabi-gcc " & "--passL:-static " &
+    "--passC:-O3 " &
+    "--passC:-march=armv5t --passC:-mfloat-abi=soft --passC:-mabi=aapcs-linux " &
+    "--passC:-ffunction-sections --passC:-fdata-sections " & "--passL:-Wl,--gc-sections " &
+    "-o:bin/yabb-linux-armv5l src/yabb.nim"
+  exec "arm-buildroot-linux-musleabi-strip --strip-all bin/yabb-linux-armv5l"
+  echo "Built: bin/yabb-linux-armv5l"
 
 task releaseRiscv64, "Build static binary for RISC-V 64-bit Linux":
   # Uses RISCstar musl toolchain with lp64d ABI (hard-float)

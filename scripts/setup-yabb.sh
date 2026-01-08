@@ -167,6 +167,7 @@ declare -rA ARCH_MAP=(
   [x86_64]="amd64"
   [aarch64]="arm64"
   [armv7l]="armv7l"
+  [armv5l]="armv5l"
   [riscv64]="riscv64"
   [ppc64le]="ppc64le"
   [loongarch64]="loong64"

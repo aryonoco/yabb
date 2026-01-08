@@ -148,3 +148,5 @@ USER root
 LABEL org.opencontainers.image.title="YABB Development Container"
 LABEL org.opencontainers.image.description="Nim + Zig cross-compilation environment for YABB"
 LABEL org.opencontainers.image.version="2.0.0"
+
+WORKDIR /workspaces/yabb
