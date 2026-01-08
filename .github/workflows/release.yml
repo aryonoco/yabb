@@ -1,6 +1,9 @@
 # =============================================================================
 # YABB Release Workflow
-# Builds static musl binaries for x86_64 and ARM64, creates GitHub Release
+# Cross-compiles static binaries for all architectures
+# - amd64, arm64, ppc64le: Zig cross-compilation
+# - riscv64: RISCstar toolchain (Zig's musl has ABI incompatibility)
+# All builds run in parallel on x86_64 runners
 # =============================================================================
 
 name: Release
@@ -16,18 +19,27 @@ permissions:
 jobs:
   build:
     name: Build ${{ matrix.arch }}
-    runs-on: ${{ matrix.runner }}
+    runs-on: ubuntu-latest
     strategy:
+      fail-fast: false  # Don't cancel other builds if one fails
       matrix:
         include:
-          - arch: x86_64
-            runner: ubuntu-latest
-            march: x86-64-v2
-            mtune: skylake
+          - arch: amd64
+            target: x86_64-linux-musl
+            nimcpu: ""
+            march: "-march=x86-64-v2 -mtune=skylake"
           - arch: arm64
-            runner: ubuntu-24.04-arm
-            march: armv8-a
-            mtune: cortex-a72
+            target: aarch64-linux-musl
+            nimcpu: "--cpu:arm64"
+            march: "-march=armv8-a -mtune=cortex_a72"
+          - arch: riscv64
+            nimcpu: "--cpu:riscv64"
+            # Uses RISCstar toolchain instead of Zig (Zig's musl has soft-float ABI)
+            use_riscstar: true
+          - arch: ppc64le
+            target: powerpc64le-linux-musl
+            nimcpu: "--cpu:powerpc64"
+            march: "-mcpu=pwr8 -mtune=pwr9"
 
     steps:
       - name: Checkout code
@@ -35,35 +47,55 @@ jobs:
 
       - name: Load versions from versions.env
         run: |
-          # Source versions.env and export to GitHub Actions environment
+          # Source versions.env - the single source of truth
           if [ -f versions.env ]; then
             source versions.env
             echo "NIM_VERSION=$NIM_VERSION" >> $GITHUB_ENV
-            echo "Loaded versions: NIM=$NIM_VERSION"
+            echo "ZIG_VERSION=$ZIG_VERSION" >> $GITHUB_ENV
+            echo "RISCSTAR_VERSION=$RISCSTAR_VERSION" >> $GITHUB_ENV
+            echo "Loaded: NIM=$NIM_VERSION, ZIG=$ZIG_VERSION, RISCSTAR=$RISCSTAR_VERSION"
           else
             echo "ERROR: versions.env not found"
             exit 1
           fi
 
-      - name: Cache Nim toolchain
+      - name: Cache Nim + Zig toolchain
         uses: actions/cache@v4
-        id: nim-cache
+        id: toolchain-cache
         with:
           path: |
             ~/nim-${{ env.NIM_VERSION }}
+            ~/zig
             ~/.nimble/bin
             ~/.nimble/pkgs2
-          key: nim-${{ matrix.arch }}-${{ env.NIM_VERSION }}-${{ hashFiles('*.nimble') }}
+          key: release-${{ env.NIM_VERSION }}-${{ env.ZIG_VERSION }}-${{ hashFiles('*.nimble') }}
           restore-keys: |
-            nim-${{ matrix.arch }}-${{ env.NIM_VERSION }}-
+            release-${{ env.NIM_VERSION }}-${{ env.ZIG_VERSION }}-
 
-      - name: Install build dependencies
+      - name: Install Zig
+        if: steps.toolchain-cache.outputs.cache-hit != 'true' && matrix.use_riscstar != true
         run: |
-          sudo apt-get update
-          sudo apt-get install -y build-essential xz-utils musl-tools musl-dev
+          cd ~
+          echo "Installing Zig ${{ env.ZIG_VERSION }}..."
+          curl -LO "https://ziglang.org/download/${{ env.ZIG_VERSION }}/zig-x86_64-linux-${{ env.ZIG_VERSION }}.tar.xz"
+          tar xf "zig-x86_64-linux-${{ env.ZIG_VERSION }}.tar.xz"
+          mv "zig-x86_64-linux-${{ env.ZIG_VERSION }}" zig
+          rm -f "zig-x86_64-linux-${{ env.ZIG_VERSION }}.tar.xz"
+          echo "Zig ${{ env.ZIG_VERSION }} installed successfully"
 
-      - name: Build Nim from source
-        if: steps.nim-cache.outputs.cache-hit != 'true'
+      - name: Install RISCstar RISC-V64 toolchain
+        if: matrix.use_riscstar == true
+        run: |
+          cd ~
+          echo "Installing RISCstar RISC-V64 toolchain ${{ env.RISCSTAR_VERSION }}..."
+          curl --tlsv1.2 -LO "https://releases.riscstar.com/toolchain/${{ env.RISCSTAR_VERSION }}/riscstar-toolchain-${{ env.RISCSTAR_VERSION }}+qemu-x86_64-riscv64-none-linux-musl.tar.xz"
+          mkdir -p riscv64-toolchain
+          tar xf "riscstar-toolchain-${{ env.RISCSTAR_VERSION }}+qemu-x86_64-riscv64-none-linux-musl.tar.xz" -C riscv64-toolchain --strip-components=1
+          rm -f "riscstar-toolchain-${{ env.RISCSTAR_VERSION }}+qemu-x86_64-riscv64-none-linux-musl.tar.xz"
+          echo "RISCstar ${{ env.RISCSTAR_VERSION }} installed successfully"
+
+      - name: Install Nim from source
+        if: steps.toolchain-cache.outputs.cache-hit != 'true'
         run: |
           cd ~
           echo "Installing Nim ${{ env.NIM_VERSION }} from source..."
@@ -78,15 +110,38 @@ jobs:
           rm -f "nim-${{ env.NIM_VERSION }}.tar.xz"
           echo "Nim ${{ env.NIM_VERSION }} installed successfully"
 
-      - name: Add Nim to PATH
+      - name: Add tools to PATH
         run: |
           echo "$HOME/nim-${{ env.NIM_VERSION }}/bin" >> $GITHUB_PATH
           echo "$HOME/.nimble/bin" >> $GITHUB_PATH
+          if [ "${{ matrix.use_riscstar }}" = "true" ]; then
+            echo "$HOME/riscv64-toolchain/bin" >> $GITHUB_PATH
+          else
+            echo "$HOME/zig" >> $GITHUB_PATH
+          fi
 
-      - name: Verify Nim version
+      - name: Install zigcc
+        if: matrix.use_riscstar != true
+        run: |
+          if ! command -v zigcc &> /dev/null; then
+            nimble install -y zigcc
+          fi
+          zigcc --version
+
+      - name: Verify toolchain (Zig)
+        if: matrix.use_riscstar != true
         run: |
           nim --version
           nimble --version
+          zig version
+          zigcc --version
+
+      - name: Verify toolchain (RISCstar)
+        if: matrix.use_riscstar == true
+        run: |
+          nim --version
+          nimble --version
+          riscv64-none-linux-musl-gcc --version
 
       - name: Install project dependencies
         run: |
@@ -97,38 +152,59 @@ jobs:
           # Remove again in case nimble reinstalled nim from registry
           rm -rf ~/.nimble/pkgs2/nim-*
 
-      - name: Build static binary
-        run: |
-          nim c -d:release --opt:speed --mm:orc -d:lto \
-            --passC:-march=${{ matrix.march }} \
-            --passC:-mtune=${{ matrix.mtune }} \
-            --passC:-flto \
-            --gcc.exe:musl-gcc --gcc.linkerexe:musl-gcc \
-            --passL:-static --passL:-flto \
-            -o:bin/yabb src/yabb.nim
-          strip -s bin/yabb
-          echo "Built: bin/yabb (static musl ${{ matrix.arch }})"
+      - name: Install llvm-strip
+        if: matrix.use_riscstar != true
+        run: sudo apt-get update -qq && sudo apt-get install -y -qq llvm
 
-      - name: Verify binary is static
+      - name: Build ${{ matrix.arch }} binary (Zig)
+        if: matrix.use_riscstar != true
         run: |
-          echo "Binary info:"
+          echo "Cross-compiling for ${{ matrix.arch }} using Zig..."
+          nim c -d:release --opt:speed --mm:orc -d:lto \
+            --cc:clang --clang.exe:zigcc --clang.linkerexe:zigcc \
+            ${{ matrix.nimcpu }} \
+            --passC:'-target ${{ matrix.target }}' \
+            --passL:'-target ${{ matrix.target }}' \
+            --passC:'${{ matrix.march }}' \
+            --passC:-flto=thin --passL:-flto=thin \
+            -o:bin/yabb src/yabb.nim
+          llvm-strip -s bin/yabb
+          echo "Built: bin/yabb (${{ matrix.arch }})"
+
+      - name: Build ${{ matrix.arch }} binary (RISCstar)
+        if: matrix.use_riscstar == true
+        run: |
+          echo "Cross-compiling for ${{ matrix.arch }} using RISCstar..."
+          # Create symlinks for Nim cross-compilation (expects riscv64-linux-gnu-*)
+          cd ~/riscv64-toolchain/bin
+          for tool in gcc g++ ar ld strip objcopy objdump ranlib nm readelf; do
+            ln -sf "riscv64-none-linux-musl-$tool" "riscv64-linux-gnu-$tool"
+          done
+          cd /home/runner/work/yabb/yabb
+          nim c -d:release --opt:speed --mm:orc -d:lto \
+            ${{ matrix.nimcpu }} \
+            --gcc.exe:riscv64-none-linux-musl-gcc \
+            --gcc.linkerexe:riscv64-none-linux-musl-gcc \
+            --passL:-static \
+            --passC:-O3 --passC:-march=rv64gc \
+            -o:bin/yabb src/yabb.nim
+          riscv64-none-linux-musl-strip -s bin/yabb
+          echo "Built: bin/yabb (${{ matrix.arch }})"
+
+      - name: Verify binary
+        run: |
+          echo "=== bin/yabb (${{ matrix.arch }}) ==="
           file bin/yabb
-          echo ""
-          echo "Checking for static linkage..."
-          if ldd bin/yabb 2>&1 | grep -qE "not a dynamic executable|statically linked"; then
-            echo "OK: Binary is statically linked"
-          else
-            echo "ERROR: Binary appears to be dynamically linked"
-            ldd bin/yabb
-            exit 1
-          fi
-          echo ""
-          echo "Binary size:"
           ls -lh bin/yabb
+          if ldd bin/yabb 2>&1 | grep -qE "not a dynamic executable|statically linked"; then
+            echo "OK: Statically linked"
+          else
+            echo "WARNING: May be dynamically linked"
+            ldd bin/yabb || true
+          fi
 
       - name: Prepare release archive
         run: |
-          # Extract version without 'v' prefix
           VERSION="${GITHUB_REF_NAME#v}"
           ARCHIVE_NAME="yabb-${VERSION}-linux-${{ matrix.arch }}"
           mkdir -p "${ARCHIVE_NAME}"

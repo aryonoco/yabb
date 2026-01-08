@@ -16,7 +16,7 @@ bin = @["yabb"]
 --mm:
   orc
 
-# Type safety - all experimental strict modes
+# Type safety
 --experimental:
   strictDefs
 --experimental:
@@ -25,16 +25,15 @@ bin = @["yabb"]
   strictFuncs
 --experimental:
   strictCaseObjects
-# --experimental:views  # Borrow checking for lent T, openArray - disabled due to
-# incompatibility with chronicles and results libraries
+# --experimental:views  #  disabled due to incompatibility with chronicles and results libraries
 --threads:
-  on # Thread safety checks - enabled for future-proofing
+  on
 
 # Style enforcement
 --styleCheck:
   error
 
-# Warnings as errors - comprehensive list
+# Warnings as errors
 --warningAsError:
   UnusedImport
 --warningAsError:
@@ -53,8 +52,6 @@ bin = @["yabb"]
   UnsafeSetLen
 --hintAsError:
   DuplicateModuleImport
-
-# Float safety - catch NaN/Infinity from arithmetic errors
 --floatChecks:
   on
 
@@ -92,20 +89,63 @@ task test, "Run tests":
   exec "testament all"
 
 task clean, "Clean build artifacts":
-  exec "rm -rf bin/yabb bin/yabb-static nimcache/"
+  exec "rm -rf bin/yabb bin/yabb-linux-* nimcache/"
 
-task release, "Build static musl binary for x86_64":
-  exec "nim c " & "-d:release " & "--opt:speed " & "--mm:orc " & "-d:lto " &
-    "--passC:-march=x86-64-v2 " & "--passC:-mtune=skylake " & "--passC:-flto " &
-    "--gcc.exe:musl-gcc " & "--gcc.linkerexe:musl-gcc " & "--passL:-static " &
-    "--passL:-flto " & "-o:bin/yabb " & "src/yabb.nim"
-  exec "strip -s bin/yabb"
-  echo "Built: bin/yabb (static musl x86_64)"
+# =============================================================================
+# Release builds
+# =============================================================================
 
-task releaseArm64, "Build static musl binary for ARM64":
-  exec "nim c " & "-d:release " & "--opt:speed " & "--mm:orc " & "-d:lto " &
-    "--passC:-march=armv8-a " & "--passC:-mtune=cortex-a72 " & "--passC:-flto " &
-    "--gcc.exe:musl-gcc " & "--gcc.linkerexe:musl-gcc " & "--passL:-static " &
-    "--passL:-flto " & "-o:bin/yabb " & "src/yabb.nim"
-  exec "strip -s bin/yabb"
-  echo "Built: bin/yabb (static musl arm64)"
+# Common release flags
+const releaseFlags = "-d:release --opt:speed --mm:orc -d:lto"
+
+# Zig compiler flags
+const zigccFlags = "--cc:clang --clang.exe:zigcc --clang.linkerexe:zigcc"
+
+# LTO flags for LLVM/Zig
+const ltoFlags = "--passC:-flto=thin --passL:-flto=thin"
+
+task releaseAmd64, "Build static binary for x86_64 Linux":
+  exec "nim c " & releaseFlags & " " & zigccFlags & " " &
+    "--passC:'-target x86_64-linux-musl' " & "--passL:'-target x86_64-linux-musl' " &
+    "--passC:-march=x86-64-v2 --passC:-mtune=skylake " & ltoFlags &
+    " -o:bin/yabb-linux-amd64 src/yabb.nim"
+  exec "llvm-strip -s bin/yabb-linux-amd64"
+  echo "Built: bin/yabb-linux-amd64"
+
+task releaseArm64, "Build static binary for ARM64 Linux":
+  exec "nim c " & releaseFlags & " " & zigccFlags & " " & "--cpu:arm64 " &
+    "--passC:'-target aarch64-linux-musl' " & "--passL:'-target aarch64-linux-musl' " &
+    "--passC:-march=armv8-a --passC:-mtune=cortex_a72 " & ltoFlags &
+    " -o:bin/yabb-linux-arm64 src/yabb.nim"
+  exec "llvm-strip -s bin/yabb-linux-arm64"
+  echo "Built: bin/yabb-linux-arm64"
+
+task releaseRiscv64, "Build static binary for RISC-V 64-bit Linux":
+  # Uses RISCstar musl toolchain with lp64d ABI (hard-float)
+  # Zig's musl uses soft-float which is incompatible with Debian riscv64
+  # See: https://github.com/ziglang/zig/issues/4863
+  # Note: GCC for RISC-V doesn't support -mtune=generic, uses march default
+  exec "nim c -d:release --opt:speed --mm:orc -d:lto " & "--cpu:riscv64 " &
+    "--gcc.exe:riscv64-none-linux-musl-gcc " &
+    "--gcc.linkerexe:riscv64-none-linux-musl-gcc " & "--passL:-static " &
+    "--passC:-O3 --passC:-march=rv64gc " & "-o:bin/yabb-linux-riscv64 src/yabb.nim"
+  exec "riscv64-none-linux-musl-strip -s bin/yabb-linux-riscv64"
+  echo "Built: bin/yabb-linux-riscv64"
+
+task releasePpc64le, "Build static binary for PowerPC 64-bit LE Linux":
+  exec "nim c " & releaseFlags & " " & zigccFlags & " " & "--cpu:powerpc64 " &
+    "--passC:'-target powerpc64le-linux-musl' " &
+    "--passL:'-target powerpc64le-linux-musl' " &
+    "--passC:-mcpu=pwr8 --passC:-mtune=pwr9 " & ltoFlags &
+    " -o:bin/yabb-linux-ppc64le src/yabb.nim"
+  exec "llvm-strip -s bin/yabb-linux-ppc64le"
+  echo "Built: bin/yabb-linux-ppc64le"
+
+task releaseAll, "Build static binaries for all Linux architectures":
+  exec "nimble releaseAmd64"
+  exec "nimble releaseArm64"
+  exec "nimble releaseRiscv64"
+  exec "nimble releasePpc64le"
+  echo ""
+  echo "All architectures built:"
+  exec "ls -lh bin/yabb-linux-*"

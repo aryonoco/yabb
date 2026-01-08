@@ -8,7 +8,7 @@
 #
 # REQUIREMENTS:
 #   Bash 5.2+
-#   Linux (x86_64 or aarch64)
+#   Linux (x86_64, aarch64, riscv64, or ppc64le)
 #   curl, tar, sha256sum
 #
 # USAGE:
@@ -113,10 +113,12 @@ declare -ra REQUIRED_COMMANDS=(
   curl tar sha256sum grep uname mkdir rm mv cp chmod mktemp cut
 )
 
-# Architecture mapping
+# Architecture mapping (uname -m -> release archive suffix)
 declare -rA ARCH_MAP=(
-  [x86_64]="x86_64"
+  [x86_64]="amd64"
   [aarch64]="arm64"
+  [riscv64]="riscv64"
+  [ppc64le]="ppc64le"
 )
 
 #-------------------------------------------------------------------------------
@@ -863,7 +865,7 @@ USAGE:
 
 DESCRIPTION:
   Download and install YABB (Yet Another BTRFS Backup) from GitHub releases.
-  Automatically detects architecture (x86_64/aarch64) and verifies checksums.
+  Automatically detects architecture (x86_64/aarch64/riscv64/ppc64le) and verifies checksums.
 
 INSTALLATION OPTIONS:
   -d, --dir PATH       Install directory (default: ${DEFAULT_INSTALL_DIR})

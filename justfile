@@ -19,6 +19,7 @@ set dotenv-filename := "versions.env"
 NIM_VERSION := env_var_or_default("NIM_VERSION", "2.2.6")
 NPH_VERSION := env_var_or_default("NPH_VERSION", "0.6.2")
 NIMLANGSERVER_VERSION := env_var_or_default("NIMLANGSERVER_VERSION", "1.12.0")
+ZIG_VERSION := env_var_or_default("ZIG_VERSION", "0.15.2")
 
 # Extract current installed versions
 _nim-version:
@@ -32,6 +33,12 @@ _nph-version:
 
 _nimlangserver-version:
     @nimlangserver --version 2>/dev/null | head -1 || echo "not installed"
+
+_zig-version:
+    @zig version 2>/dev/null || echo "not installed"
+
+_zigcc-version:
+    @zigcc --version 2>/dev/null || echo "not installed"
 
 # =============================================================================
 # DEFAULT & HELP
@@ -49,19 +56,22 @@ versions:
     @echo "  Nimble:        $(just _nimble-version)"
     @echo "  nph:           $(just _nph-version)"
     @echo "  nimlangserver: $(just _nimlangserver-version)"
+    @echo "  Zig:           $(just _zig-version)"
+    @echo "  zigcc:         $(just _zigcc-version)"
     @echo "  just:          $(just --version)"
     @echo ""
     @echo "Target versions (from versions.env):"
     @echo "  NIM_VERSION:           {{NIM_VERSION}}"
     @echo "  NPH_VERSION:           {{NPH_VERSION}}"
     @echo "  NIMLANGSERVER_VERSION: {{NIMLANGSERVER_VERSION}}"
+    @echo "  ZIG_VERSION:           {{ZIG_VERSION}}"
 
 # =============================================================================
-# SETUP & INSTALLATION
+# SETUP
 # =============================================================================
 
 # Full environment setup (run after devcontainer creation)
-setup: _install-nim-tools install
+setup: _install-nim-tools _install-zigcc install
     @echo "Setup complete! Run 'just versions' to verify."
 
 # Install Nim development tools
@@ -89,6 +99,16 @@ _install-nim-tools:
         echo "nph v{{NPH_VERSION}} already installed"; \
     fi
     @echo "Nim tools installed"
+
+# Install zigcc (Zig wrapper for Nim)
+_install-zigcc:
+    @echo "Checking zigcc installation..."
+    @if ! command -v zigcc &> /dev/null; then \
+        echo "Installing zigcc..."; \
+        nimble install -y zigcc; \
+    else \
+        echo "zigcc already installed"; \
+    fi
 
 # Install project dependencies
 install:
@@ -118,15 +138,55 @@ build:
     nimble build
     @echo "Debug build: bin/yabb (glibc, debug symbols, assertions, checks)"
 
-# Build release binary (production deployment)
+# Build release binary for native architecture (production deployment)
 release: && _clean-cache
-    @echo "Building release binary..."
-    nimble release
-    @echo "Release build: bin/yabb (musl static, optimised, stripped)"
+    #!/usr/bin/env bash
+    set -euo pipefail
+    ARCH=$(uname -m)
+    echo "Building release binary for $ARCH..."
+    case "$ARCH" in
+        x86_64)  nimble releaseAmd64 && cp bin/yabb-linux-amd64 bin/yabb ;;
+        aarch64) nimble releaseArm64 && cp bin/yabb-linux-arm64 bin/yabb ;;
+        riscv64) nimble releaseRiscv64 && cp bin/yabb-linux-riscv64 bin/yabb ;;
+        ppc64le) nimble releasePpc64le && cp bin/yabb-linux-ppc64le bin/yabb ;;
+        *) echo "Unsupported architecture: $ARCH" && exit 1 ;;
+    esac
+    echo "Release build: bin/yabb (musl static, optimised, stripped)"
 
 # Rebuild debug from scratch
 rebuild: clean build
     @echo "Rebuild complete"
+
+# =============================================================================
+# CROSS-COMPILATION (via Zig)
+# =============================================================================
+
+# Build for x86_64 Linux (static musl)
+build-amd64:
+    @echo "Cross-compiling for x86_64..."
+    nimble releaseAmd64
+
+# Build for ARM64 Linux (static musl)
+build-arm64:
+    @echo "Cross-compiling for ARM64..."
+    nimble releaseArm64
+
+# Build for RISC-V 64-bit Linux (static musl, lp64d hard-float)
+# Uses RISCstar toolchain - works on both x86-64 and ARM64 hosts
+build-riscv64:
+    @echo "Cross-compiling for RISC-V 64..."
+    nimble releaseRiscv64
+
+# Build for PowerPC 64-bit LE Linux (static musl)
+build-ppc64le:
+    @echo "Cross-compiling for PPC64LE..."
+    nimble releasePpc64le
+
+# Build all Linux architectures (amd64, arm64, riscv64, ppc64le)
+build-all: build-amd64 build-arm64 build-riscv64 build-ppc64le
+    @echo ""
+    @echo "All architectures built:"
+    @ls -lh bin/yabb-linux-* 2>/dev/null || echo "No binaries found"
 
 # =============================================================================
 # TESTING
@@ -239,7 +299,7 @@ _clean-cache:
 # Clean all build artifacts including binaries
 clean:
     @echo "Cleaning build artifacts..."
-    rm -rf bin/yabb bin/*.exe
+    rm -rf bin/yabb bin/yabb-linux-* bin/*.exe
     rm -rf nimcache/
     rm -rf htmldocs/
     rm -f testresults.html
@@ -304,9 +364,18 @@ watch-test:
 # BINARY INFO
 # =============================================================================
 
-# Show binary info
+# Show binary info for all built binaries
 binary-info:
     @echo "Binary information:"
-    @file bin/yabb 2>/dev/null || echo "Binary not found - run 'just build' first"
-    @ls -lh bin/yabb 2>/dev/null || true
-    @ldd bin/yabb 2>/dev/null || echo "(static binary - no dynamic dependencies)"
+    @for bin in bin/yabb bin/yabb-linux-*; do \
+        if [ -f "$$bin" ]; then \
+            echo ""; \
+            echo "=== $$bin ==="; \
+            file "$$bin"; \
+            ls -lh "$$bin"; \
+            ldd "$$bin" 2>&1 | head -3 || true; \
+        fi; \
+    done
+    @if [ ! -f bin/yabb ] && [ ! -f bin/yabb-linux-amd64 ]; then \
+        echo "No binaries found - run 'just build' first"; \
+    fi

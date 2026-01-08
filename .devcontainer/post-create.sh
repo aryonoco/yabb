@@ -33,9 +33,13 @@ alias jv='just versions'
 
 # Build shortcuts (via just)
 alias jb='just build'
-alias jbr='just build-release'
-alias jbs='just build-static'
-alias jbd='just build-debug'
+alias jbr='just release'
+
+# Cross-compilation shortcuts (via just)
+alias jba='just build-all'
+alias jbarm='just build-arm64'
+alias jbrv='just build-riscv64'
+alias jbppc='just build-ppc64le'
 
 # Test shortcuts (via just)
 alias jt='just test'
@@ -80,9 +84,13 @@ yabbhelp() {
   echo ""
   echo "Build:"
   echo "  jb          - just build (debug)"
-  echo "  jbr         - just build-release (optimised)"
-  echo "  jbs         - just build-static (musl)"
-  echo "  jbd         - just build-debug (with LLDB symbols)"
+  echo "  jbr         - just release (optimised static)"
+  echo ""
+  echo "Cross-compilation:"
+  echo "  jba         - just build-all (all 4 architectures)"
+  echo "  jbarm       - just build-arm64"
+  echo "  jbrv        - just build-riscv64"
+  echo "  jbppc       - just build-ppc64le"
   echo ""
   echo "Test:"
   echo "  jt          - just test"
@@ -103,7 +111,6 @@ yabbhelp() {
   echo "Other:"
   echo "  jcl         - just clean"
   echo "  jd          - just docs"
-  echo "  jrel        - just release (full release)"
   echo ""
   echo "Run 'just --list' for all available commands"
 }
@@ -120,28 +127,60 @@ if [ ! -f nimble.lock ]; then
   just lock
 fi
 
-# Validate versions.env matches installed Nim version
+# =============================================================================
+# Version Validation - ensures devcontainer matches versions.env
+# =============================================================================
 echo ""
 echo "Validating version configuration..."
 if [ -f versions.env ]; then
   source versions.env
+  MISMATCH=0
+
+  # Validate Nim
   INSTALLED_NIM=$(nim --version 2>/dev/null | head -1 | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' || echo "unknown")
+  echo "Checking Nim: expected=$NIM_VERSION, installed=$INSTALLED_NIM"
   if [ "$NIM_VERSION" != "$INSTALLED_NIM" ]; then
+    echo "  WARNING: Nim version mismatch!"
+    MISMATCH=1
+  fi
+
+  # Validate Zig
+  INSTALLED_ZIG=$(zig version 2>/dev/null || echo "unknown")
+  echo "Checking Zig: expected=$ZIG_VERSION, installed=$INSTALLED_ZIG"
+  if [ "$ZIG_VERSION" != "$INSTALLED_ZIG" ]; then
+    echo "  WARNING: Zig version mismatch!"
+    MISMATCH=1
+  fi
+
+  # Validate zigcc is installed
+  if ! command -v zigcc &> /dev/null; then
+    echo "  WARNING: zigcc not found! Run 'nimble install -y zigcc'"
+    MISMATCH=1
+  else
+    echo "Checking zigcc: installed"
+  fi
+
+  # Validate RISCstar RISC-V64 toolchain
+  if command -v riscv64-none-linux-musl-gcc &> /dev/null; then
+    INSTALLED_RISCSTAR=$(riscv64-none-linux-musl-gcc --version 2>/dev/null | head -1 || echo "unknown")
+    echo "Checking RISCstar RISC-V64: installed ($INSTALLED_RISCSTAR)"
+  else
+    echo "  WARNING: RISCstar RISC-V64 toolchain not found!"
+    MISMATCH=1
+  fi
+
+  if [ "$MISMATCH" -eq 1 ]; then
     echo ""
     echo "========================================"
     echo "WARNING: Version mismatch detected!"
     echo "========================================"
-    echo "  versions.env:    NIM_VERSION=$NIM_VERSION"
-    echo "  Installed Nim:   $INSTALLED_NIM"
-    echo ""
     echo "To fix: Update .devcontainer/devcontainer.json"
-    echo "  - build.args.NIM_VERSION"
-    echo "  - containerEnv.NIM_VERSION"
+    echo "  - build.args (NIM_VERSION, ZIG_VERSION)"
+    echo "  - containerEnv (NIM_VERSION, ZIG_VERSION)"
     echo "Then rebuild the container."
     echo "========================================"
-    echo ""
   else
-    echo "OK: Nim version matches versions.env ($NIM_VERSION)"
+    echo "OK: All versions match versions.env"
   fi
 else
   echo "WARNING: versions.env not found"
@@ -157,9 +196,11 @@ echo "YABB Development Environment Ready!"
 echo "========================================"
 echo ""
 echo "Quick start:"
-echo "  just         - Show all available commands"
-echo "  just build   - Build debug binary"
-echo "  just test    - Run tests"
-echo "  just ci      - Run full CI pipeline"
-echo "  yabbhelp     - Show alias shortcuts"
+echo "  just            - Show all available commands"
+echo "  just build      - Build debug binary"
+echo "  just release    - Build optimised static binary"
+echo "  just build-all  - Cross-compile all architectures"
+echo "  just test       - Run tests"
+echo "  just ci         - Run full CI pipeline"
+echo "  yabbhelp        - Show alias shortcuts"
 echo ""

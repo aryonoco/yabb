@@ -22,31 +22,44 @@ jobs:
 
       - name: Load versions from versions.env
         run: |
-          # Source versions.env and export to GitHub Actions environment
+          # Source versions.env - the single source of truth
           if [ -f versions.env ]; then
             source versions.env
             echo "NIM_VERSION=$NIM_VERSION" >> $GITHUB_ENV
             echo "NPH_VERSION=$NPH_VERSION" >> $GITHUB_ENV
-            echo "Loaded versions: NIM=$NIM_VERSION, NPH=$NPH_VERSION"
+            echo "ZIG_VERSION=$ZIG_VERSION" >> $GITHUB_ENV
+            echo "Loaded: NIM=$NIM_VERSION, NPH=$NPH_VERSION, ZIG=$ZIG_VERSION"
           else
             echo "ERROR: versions.env not found"
             exit 1
           fi
 
-      - name: Cache Nim toolchain
+      - name: Cache Nim + Zig toolchain
         uses: actions/cache@v4
-        id: nim-cache
+        id: toolchain-cache
         with:
           path: |
             ~/nim-${{ env.NIM_VERSION }}
+            ~/zig
             ~/.nimble/bin
             ~/.nimble/pkgs2
-          key: nim-${{ runner.os }}-${{ runner.arch }}-${{ env.NIM_VERSION }}-${{ env.NPH_VERSION }}-${{ hashFiles('*.nimble') }}
+          key: toolchain-${{ runner.os }}-nim${{ env.NIM_VERSION }}-zig${{ env.ZIG_VERSION }}-${{ env.NPH_VERSION }}-${{ hashFiles('*.nimble') }}
           restore-keys: |
-            nim-${{ runner.os }}-${{ runner.arch }}-${{ env.NIM_VERSION }}-
+            toolchain-${{ runner.os }}-nim${{ env.NIM_VERSION }}-zig${{ env.ZIG_VERSION }}-
+
+      - name: Install Zig
+        if: steps.toolchain-cache.outputs.cache-hit != 'true'
+        run: |
+          cd ~
+          echo "Installing Zig ${{ env.ZIG_VERSION }}..."
+          curl -LO "https://ziglang.org/download/${{ env.ZIG_VERSION }}/zig-x86_64-linux-${{ env.ZIG_VERSION }}.tar.xz"
+          tar xf "zig-x86_64-linux-${{ env.ZIG_VERSION }}.tar.xz"
+          mv "zig-x86_64-linux-${{ env.ZIG_VERSION }}" zig
+          rm -f "zig-x86_64-linux-${{ env.ZIG_VERSION }}.tar.xz"
+          echo "Zig ${{ env.ZIG_VERSION }} installed successfully"
 
       - name: Install Nim from source
-        if: steps.nim-cache.outputs.cache-hit != 'true'
+        if: steps.toolchain-cache.outputs.cache-hit != 'true'
         run: |
           cd ~
           echo "Installing Nim ${{ env.NIM_VERSION }} from source..."
@@ -62,34 +75,40 @@ jobs:
           rm -f "nim-${{ env.NIM_VERSION }}.tar.xz"
           echo "Nim ${{ env.NIM_VERSION }} installed successfully"
 
-      - name: Add Nim to PATH
+      - name: Add tools to PATH
         run: |
           echo "$HOME/nim-${{ env.NIM_VERSION }}/bin" >> $GITHUB_PATH
           echo "$HOME/.nimble/bin" >> $GITHUB_PATH
+          echo "$HOME/zig" >> $GITHUB_PATH
 
-      - name: Verify Nim version
+      - name: Verify toolchain
         run: |
           nim --version
           nimble --version
+          zig version
 
       - name: Install just
         uses: extractions/setup-just@v2
 
-      - name: Install nph formatter
+      - name: Install zigcc
         run: |
-          if ! command -v nph &> /dev/null; then
-            # nph requires Nim 2.2.x compiler internals. Build from source using
-            # choosenim's Nim to avoid nimble resolving to old nim package (2.0.8)
-            git clone --depth 1 --branch "v${{ env.NPH_VERSION }}" https://github.com/arnetheduck/nph.git /tmp/nph
-            cd /tmp/nph
-            nimble setup
-            nim c -d:release -o:"$HOME/.nimble/bin/nph" src/nph.nim
-            cd -
-            rm -rf /tmp/nph
-            echo "nph installed: $(nph --version)"
-          else
-            echo "nph already installed (from cache)"
+          if ! command -v zigcc &> /dev/null; then
+            nimble install -y zigcc
           fi
+          zigcc --version
+
+      - name: Install nph formatter
+        if: steps.toolchain-cache.outputs.cache-hit != 'true'
+        run: |
+          # nph requires Nim 2.2.x compiler internals. Build from source using
+          # our Nim to avoid nimble resolving to old nim package (2.0.8)
+          git clone --depth 1 --branch "v${{ env.NPH_VERSION }}" https://github.com/arnetheduck/nph.git /tmp/nph
+          cd /tmp/nph
+          nimble setup
+          nim c -d:release -o:"$HOME/.nimble/bin/nph" src/nph.nim
+          cd -
+          rm -rf /tmp/nph
+          echo "nph installed: $(nph --version)"
 
       - name: Install project dependencies
         run: |
@@ -98,7 +117,6 @@ jobs:
           nimble install -d --accept
           nimble setup
           # Remove again in case nimble reinstalled nim from registry
-          # (nim should NOT be in nimble.lock, but defense-in-depth)
           rm -rf ~/.nimble/pkgs2/nim-*
 
       - name: Check formatting

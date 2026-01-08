@@ -4,7 +4,9 @@
     "dockerfile": "Dockerfile",
     "args": {
       "NIM_VERSION": "2.2.6",
-      "NIMLANGSERVER_VERSION": "1.12.0"
+      "NIMLANGSERVER_VERSION": "1.12.0",
+      "ZIG_VERSION": "0.15.2",
+      "RISCSTAR_VERSION": "15.2-r1"
     }
   },
   "workspaceFolder": "/workspaces/yabb",
@@ -14,7 +16,7 @@
   "updateRemoteUserUID": true,
   "shutdownAction": "stopContainer",
 
-  "initializeCommand": "for vol in yabb-vscode-server yabb-nimble-cache; do docker volume inspect \"$vol\" >/dev/null 2>&1 && docker run --rm -v \"$vol:/data\" alpine chown -R 1000:1000 /data 2>/dev/null; done || true",
+  "initializeCommand": "for vol in yabb-vscode-server yabb-nimble-cache; do docker volume create \"$vol\" 2>/dev/null || true; docker run --rm -v \"$vol:/data\" alpine chown -R 1000:1000 /data; done",
 
   "features": {
     "ghcr.io/devcontainers/features/common-utils:2": {
@@ -60,6 +62,8 @@
 
   "containerEnv": {
     "NIM_VERSION": "2.2.6",
+    "ZIG_VERSION": "0.15.2",
+    "RISCSTAR_VERSION": "15.2-r1",
     "EDITOR": "code --wait",
     "VISUAL": "code --wait"
   },
