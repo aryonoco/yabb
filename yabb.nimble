@@ -7,7 +7,7 @@
 #
 # Package
 
-version = "0.4.22"
+version = "0.4.23"
 author = "Aryan Ameri"
 description = "Yet Another BTRFS Backup"
 license = "MPL 2.0"
@@ -108,15 +108,20 @@ const releaseFlags = "-d:release --opt:speed --mm:orc -d:lto"
 # Zig compiler flags
 const zigccFlags = "--cc:clang --clang.exe:zigcc --clang.linkerexe:zigcc"
 
-# LTO flags for LLVM/Zig
-const ltoFlags = "--passC:-flto=thin --passL:-flto=thin"
+# LTO, GC sections, and strip flags for LLVM/Zig
+# - ffunction-sections/fdata-sections: put each function/data in own section
+# - gc-sections: remove unreferenced sections (dead code elimination)
+# - flto=thin: link-time optimization
+# - s: strip symbols
+const ltoFlags =
+  "--passC:-ffunction-sections --passC:-fdata-sections " &
+  "--passC:-flto=thin --passL:-flto=thin --passL:-Wl,--gc-sections --passL:-s"
 
 task releaseAmd64, "Build static binary for x86_64 Linux":
   exec "nim c " & releaseFlags & " " & zigccFlags & " " &
     "--passC:'-target x86_64-linux-musl' " & "--passL:'-target x86_64-linux-musl' " &
     "--passC:-march=x86_64 --passC:-mno-avx --passC:-mno-avx2 " & ltoFlags &
     " -o:bin/yabb-linux-amd64 src/yabb.nim"
-  exec "llvm-strip -s bin/yabb-linux-amd64"
   echo "Built: bin/yabb-linux-amd64"
 
 task releaseArm64, "Build static binary for ARM64 Linux":
@@ -124,7 +129,6 @@ task releaseArm64, "Build static binary for ARM64 Linux":
     "--passC:'-target aarch64-linux-musl' " & "--passL:'-target aarch64-linux-musl' " &
     "--passC:-march=armv8-a --passC:-mtune=cortex_a72 " & ltoFlags &
     " -o:bin/yabb-linux-arm64 src/yabb.nim"
-  exec "llvm-strip -s bin/yabb-linux-arm64"
   echo "Built: bin/yabb-linux-arm64"
 
 task releaseArmv7l, "Build static binary for ARMv7 Linux (armhf)":
@@ -134,19 +138,20 @@ task releaseArmv7l, "Build static binary for ARMv7 Linux (armhf)":
   exec "nim c " & releaseFlags & " " & zigccFlags & " " & "--cpu:arm " &
     "--passC:'-target arm-linux-musleabihf' " & "--passL:'-target arm-linux-musleabihf' " &
     "--passC:-mcpu=baseline " & ltoFlags & " -o:bin/yabb-linux-armv7l src/yabb.nim"
-  exec "llvm-strip -s bin/yabb-linux-armv7l"
   echo "Built: bin/yabb-linux-armv7l"
 
 task releaseArmv5l, "Build static binary for ARMv5 Linux (armel - CI only)":
   # Debian armel: ARMv5T baseline, soft-float EABI
   # Uses Bootlin musl toolchain (CI-only, not available locally)
   # See: https://wiki.debian.org/ArmEabiPort
-  exec "nim c -d:release --opt:speed --mm:orc -d:lto " & "--cpu:arm " &
+  # Note: Using -flto=auto for parallel LTO (GCC's default is single-threaded)
+  exec "nim c -d:release --opt:speed --mm:orc " & "--cpu:arm " &
     "--gcc.exe:arm-buildroot-linux-musleabi-gcc " &
     "--gcc.linkerexe:arm-buildroot-linux-musleabi-gcc " & "--passL:-static " &
     "--passC:-O3 " &
     "--passC:-march=armv5t --passC:-mfloat-abi=soft --passC:-mabi=aapcs-linux " &
-    "--passC:-ffunction-sections --passC:-fdata-sections " & "--passL:-Wl,--gc-sections " &
+    "--passC:-ffunction-sections --passC:-fdata-sections " &
+    "--passC:-flto=auto --passL:-flto=auto " & "--passL:-Wl,--gc-sections " &
     "-o:bin/yabb-linux-armv5l src/yabb.nim"
   exec "arm-buildroot-linux-musleabi-strip --strip-all bin/yabb-linux-armv5l"
   echo "Built: bin/yabb-linux-armv5l"
@@ -155,10 +160,14 @@ task releaseRiscv64, "Build static binary for RISC-V 64-bit Linux":
   # Uses RISCstar musl toolchain with lp64d ABI (hard-float)
   # Zig's musl uses soft-float which is incompatible with Debian riscv64
   # See: https://github.com/ziglang/zig/issues/4863
-  exec "nim c -d:release --opt:speed --mm:orc -d:lto " & "--cpu:riscv64 " &
+  # Note: Using -flto=auto for parallel LTO (GCC's default is single-threaded)
+  exec "nim c -d:release --opt:speed --mm:orc " & "--cpu:riscv64 " &
     "--gcc.exe:riscv64-none-linux-musl-gcc " &
     "--gcc.linkerexe:riscv64-none-linux-musl-gcc " & "--passL:-static " &
-    "--passC:-O3 --passC:-march=rv64gc " & "-o:bin/yabb-linux-riscv64 src/yabb.nim"
+    "--passC:-O3 --passC:-march=rv64gc " &
+    "--passC:-ffunction-sections --passC:-fdata-sections " &
+    "--passC:-flto=auto --passL:-flto=auto " & "--passL:-Wl,--gc-sections " &
+    "-o:bin/yabb-linux-riscv64 src/yabb.nim"
   exec "riscv64-none-linux-musl-strip -s bin/yabb-linux-riscv64"
   echo "Built: bin/yabb-linux-riscv64"
 
@@ -168,7 +177,6 @@ task releasePpc64le, "Build static binary for PowerPC 64-bit LE Linux":
     "--passL:'-target powerpc64le-linux-musl' " &
     "--passC:-mcpu=pwr8 --passC:-mtune=pwr9 " & ltoFlags &
     " -o:bin/yabb-linux-ppc64le src/yabb.nim"
-  exec "llvm-strip -s bin/yabb-linux-ppc64le"
   echo "Built: bin/yabb-linux-ppc64le"
 
 task releaseLoong64, "Build static binary for LoongArch64 Linux":
@@ -176,7 +184,6 @@ task releaseLoong64, "Build static binary for LoongArch64 Linux":
     "--passC:'-target loongarch64-linux-musl' " &
     "--passL:'-target loongarch64-linux-musl' " & "--passC:-march=loongarch64 " &
     ltoFlags & " -o:bin/yabb-linux-loong64 src/yabb.nim"
-  exec "llvm-strip -s bin/yabb-linux-loong64"
   echo "Built: bin/yabb-linux-loong64"
 
 task releaseMips64el, "Build static binary for MIPS64EL Linux":
@@ -187,7 +194,6 @@ task releaseMips64el, "Build static binary for MIPS64EL Linux":
     "--passC:'-target mips64el-linux-muslabi64' " &
     "--passL:'-target mips64el-linux-muslabi64' " & "--passC:-mcpu=mips64r2 " & ltoFlags &
     " -o:bin/yabb-linux-mips64el src/yabb.nim"
-  exec "llvm-strip -s bin/yabb-linux-mips64el"
   echo "Built: bin/yabb-linux-mips64el"
 
 task releaseAll, "Build static binaries for all Linux architectures":

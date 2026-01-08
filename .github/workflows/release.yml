@@ -12,7 +12,12 @@
 # - riscv64: RISCstar toolchain (Zig's musl has ABI incompatibility)
 # - armv5l: Bootlin toolchain (Zig's musl emits NEON instructions)
 # Note: armv7l requires NEON (Zig's musl is compiled with NEON optimisations)
-# All builds run in parallel on x86_64 runners
+#
+# Workflow structure:
+# 1. setup-nim: Build Nim once and upload as artifact (prevents download race)
+# 2. build: 8 parallel jobs download Nim artifact + their toolchain
+# 3. release: Collect all binaries and publish
+#
 # Archives use zstd compression (level 19) for best size
 # =============================================================================
 
@@ -27,11 +32,75 @@ permissions:
   contents: write
 
 jobs:
+  # ==========================================================================
+  # Setup Nim - Build once, share with all build jobs
+  # This prevents 8 jobs from racing to download from nim-lang.org
+  # ==========================================================================
+  setup-nim:
+    name: Setup Nim
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Load versions from versions.env
+        run: |
+          if [ -f versions.env ]; then
+            source versions.env
+            echo "NIM_VERSION=$NIM_VERSION" >> $GITHUB_ENV
+            echo "Loaded: NIM=$NIM_VERSION"
+          else
+            echo "ERROR: versions.env not found"
+            exit 1
+          fi
+
+      - name: Cache Nim
+        uses: actions/cache@v4
+        id: nim-cache
+        with:
+          path: ~/nim-${{ env.NIM_VERSION }}
+          key: nim-${{ env.NIM_VERSION }}-${{ runner.os }}
+
+      - name: Install Nim from source
+        if: steps.nim-cache.outputs.cache-hit != 'true'
+        run: |
+          cd ~
+          echo "Installing Nim ${{ env.NIM_VERSION }} from source..."
+          curl -fsSL --proto '=https' --tlsv1.2 -LO \
+            "https://nim-lang.org/download/nim-${{ env.NIM_VERSION }}.tar.xz"
+          tar xf "nim-${{ env.NIM_VERSION }}.tar.xz"
+          cd "nim-${{ env.NIM_VERSION }}"
+          sh build.sh
+          ./bin/nim c -d:release koch
+          ./koch boot -d:release
+          ./koch nimble
+          cd ..
+          rm -f "nim-${{ env.NIM_VERSION }}.tar.xz"
+          echo "Nim ${{ env.NIM_VERSION }} installed successfully"
+
+      - name: Create Nim tarball for artifact
+        run: |
+          cd ~
+          tar -cf nim-${{ env.NIM_VERSION }}.tar nim-${{ env.NIM_VERSION }}
+          ls -lh nim-${{ env.NIM_VERSION }}.tar
+
+      - name: Upload Nim as artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: nim-${{ env.NIM_VERSION }}
+          path: ~/nim-${{ env.NIM_VERSION }}.tar
+          retention-days: 1
+          compression-level: 0
+
+  # ==========================================================================
+  # Build - Cross-compile for all architectures in parallel
+  # ==========================================================================
   build:
     name: Build ${{ matrix.arch }}
+    needs: setup-nim
     runs-on: ubuntu-latest
     strategy:
-      fail-fast: false # Don't cancel other builds if one fails
+      fail-fast: false
       matrix:
         include:
           - arch: amd64
@@ -77,7 +146,6 @@ jobs:
 
       - name: Load versions from versions.env
         run: |
-          # Source versions.env - the single source of truth
           if [ -f versions.env ]; then
             source versions.env
             echo "NIM_VERSION=$NIM_VERSION" >> $GITHUB_ENV
@@ -90,20 +158,28 @@ jobs:
             exit 1
           fi
 
-      - name: Cache Nim + toolchain
+      - name: Download Nim artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: nim-${{ env.NIM_VERSION }}
+          path: ~
+
+      - name: Extract Nim
+        run: |
+          cd ~
+          tar -xf nim-${{ env.NIM_VERSION }}.tar
+          rm nim-${{ env.NIM_VERSION }}.tar
+          echo "Nim ${{ env.NIM_VERSION }} ready"
+
+      - name: Cache toolchain
         uses: actions/cache@v4
         id: toolchain-cache
         with:
           path: |
-            ~/nim-${{ env.NIM_VERSION }}
-            ~/.nimble/bin
-            ~/.nimble/pkgs2
             ${{ matrix.toolchain == 'zig' && '~/zig' || '' }}
             ${{ matrix.toolchain == 'riscstar' && '~/riscv64-toolchain' || '' }}
             ${{ matrix.toolchain == 'bootlin' && '~/armv5-toolchain' || '' }}
-          key: release-nim-${{ env.NIM_VERSION }}-${{ matrix.toolchain }}-${{ matrix.toolchain == 'zig' && env.ZIG_VERSION || matrix.toolchain == 'riscstar' && env.RISCSTAR_VERSION || env.BOOTLIN_ARMV5_VERSION }}-${{ hashFiles('*.nimble') }}
-          restore-keys: |
-            release-nim-${{ env.NIM_VERSION }}-${{ matrix.toolchain }}-
+          key: toolchain-${{ matrix.toolchain }}-${{ matrix.toolchain == 'zig' && env.ZIG_VERSION || matrix.toolchain == 'riscstar' && env.RISCSTAR_VERSION || env.BOOTLIN_ARMV5_VERSION }}
 
       - name: Install Zig
         if: matrix.toolchain == 'zig' && steps.toolchain-cache.outputs.cache-hit != 'true'
@@ -184,22 +260,6 @@ jobs:
           rm -f "${TOOLCHAIN_FILE}" "${CHECKSUM_FILE}"
           echo "Bootlin ${{ env.BOOTLIN_ARMV5_VERSION }} installed and verified successfully"
 
-      - name: Install Nim from source
-        if: steps.toolchain-cache.outputs.cache-hit != 'true'
-        run: |
-          cd ~
-          echo "Installing Nim ${{ env.NIM_VERSION }} from source..."
-          curl -LO "https://nim-lang.org/download/nim-${{ env.NIM_VERSION }}.tar.xz"
-          tar xf "nim-${{ env.NIM_VERSION }}.tar.xz"
-          cd "nim-${{ env.NIM_VERSION }}"
-          sh build.sh
-          ./bin/nim c -d:release koch
-          ./koch boot -d:release
-          ./koch nimble
-          cd ..
-          rm -f "nim-${{ env.NIM_VERSION }}.tar.xz"
-          echo "Nim ${{ env.NIM_VERSION }} installed successfully"
-
       - name: Add tools to PATH
         run: |
           echo "$HOME/nim-${{ env.NIM_VERSION }}/bin" >> $GITHUB_PATH
@@ -249,10 +309,6 @@ jobs:
           # Remove again in case nimble reinstalled nim from registry
           rm -rf ~/.nimble/pkgs2/nim-*
 
-      - name: Install build tools (llvm-strip)
-        if: matrix.toolchain == 'zig'
-        run: sudo apt-get update -qq && sudo apt-get install -y -qq llvm
-
       - name: Build ${{ matrix.arch }} binary (Zig)
         if: matrix.toolchain == 'zig'
         run: |
@@ -263,9 +319,10 @@ jobs:
             --passC:'-target ${{ matrix.target }}' \
             --passL:'-target ${{ matrix.target }}' \
             --passC:'${{ matrix.march }}' \
+            --passC:-ffunction-sections --passC:-fdata-sections \
             --passC:-flto=thin --passL:-flto=thin \
+            --passL:-Wl,--gc-sections --passL:-s \
             -o:bin/yabb src/yabb.nim
-          llvm-strip -s bin/yabb
           echo "Built: bin/yabb (${{ matrix.arch }})"
 
       - name: Build ${{ matrix.arch }} binary (RISCstar)
@@ -278,12 +335,16 @@ jobs:
             ln -sf "riscv64-none-linux-musl-$tool" "riscv64-linux-gnu-$tool"
           done
           cd /home/runner/work/yabb/yabb
-          nim c -d:release --opt:speed --mm:orc -d:lto \
+          # Note: Using -flto=auto for parallel LTO (GCC's default is single-threaded)
+          nim c -d:release --opt:speed --mm:orc \
             ${{ matrix.nimcpu }} \
             --gcc.exe:riscv64-none-linux-musl-gcc \
             --gcc.linkerexe:riscv64-none-linux-musl-gcc \
             --passL:-static \
             --passC:-O3 --passC:-march=rv64gc \
+            --passC:-ffunction-sections --passC:-fdata-sections \
+            --passC:-flto=auto --passL:-flto=auto \
+            --passL:-Wl,--gc-sections \
             -o:bin/yabb src/yabb.nim
           riscv64-none-linux-musl-strip -s bin/yabb
           echo "Built: bin/yabb (${{ matrix.arch }})"
@@ -303,7 +364,8 @@ jobs:
             fi
           done
           cd /home/runner/work/yabb/yabb
-          nim c -d:release --opt:speed --mm:orc -d:lto \
+          # Note: Using -flto=auto for parallel LTO (GCC's default is single-threaded)
+          nim c -d:release --opt:speed --mm:orc \
             ${{ matrix.nimcpu }} \
             --gcc.exe:arm-buildroot-linux-musleabi-gcc \
             --gcc.linkerexe:arm-buildroot-linux-musleabi-gcc \
@@ -314,6 +376,7 @@ jobs:
             --passC:-mabi=aapcs-linux \
             --passC:-ffunction-sections \
             --passC:-fdata-sections \
+            --passC:-flto=auto --passL:-flto=auto \
             --passL:-Wl,--gc-sections \
             -o:bin/yabb src/yabb.nim
           arm-buildroot-linux-musleabi-strip --strip-all bin/yabb
@@ -380,6 +443,9 @@ jobs:
           path: ${{ env.ARCHIVE_NAME }}.tar.zst
           retention-days: 1
 
+  # ==========================================================================
+  # Release - Collect all binaries and publish
+  # ==========================================================================
   release:
     name: Create Release
     needs: build
@@ -390,6 +456,7 @@ jobs:
         uses: actions/download-artifact@v4
         with:
           path: artifacts
+          pattern: yabb-*
           merge-multiple: true
 
       - name: Generate checksums
