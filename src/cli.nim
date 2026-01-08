@@ -820,7 +820,6 @@ proc health*(
 
 const YabbUsage =
   """YABB - Yet Another BTRFS Backup
-A robust incremental backup tool using BTRFS snapshots and send/receive.
 
 Usage: yabb <command> [options]
 
