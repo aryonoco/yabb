@@ -28,7 +28,7 @@ jobs:
           - arch: amd64
             target: x86_64-linux-musl
             nimcpu: ""
-            march: "-march=x86-64 -mno-avx -mno-avx2"
+            march: "-march=x86_64 -mno-avx -mno-avx2"
           - arch: arm64
             target: aarch64-linux-musl
             nimcpu: "--cpu:arm64"

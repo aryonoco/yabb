@@ -1,6 +1,6 @@
 # Package
 
-version = "0.4.12"
+version = "0.4.13"
 author = "Aryan Ameri"
 description = "Yet Another BTRFS Backup"
 license = "MPL 2.0"
@@ -107,7 +107,7 @@ const ltoFlags = "--passC:-flto=thin --passL:-flto=thin"
 task releaseAmd64, "Build static binary for x86_64 Linux":
   exec "nim c " & releaseFlags & " " & zigccFlags & " " &
     "--passC:'-target x86_64-linux-musl' " & "--passL:'-target x86_64-linux-musl' " &
-    "--passC:-march=x86-64 --passC:-mno-avx --passC:-mno-avx2 " & ltoFlags &
+    "--passC:-march=x86_64 --passC:-mno-avx --passC:-mno-avx2 " & ltoFlags &
     " -o:bin/yabb-linux-amd64 src/yabb.nim"
   exec "llvm-strip -s bin/yabb-linux-amd64"
   echo "Built: bin/yabb-linux-amd64"
