@@ -80,10 +80,20 @@ LockPersonality=yes
 RestrictSUIDSGID=yes
 
 # -----------------------------------------------------------------------------
-# Capabilities (BTRFS requires CAP_SYS_ADMIN)
+# Capabilities for complete BTRFS backup/restore
 # -----------------------------------------------------------------------------
-CapabilityBoundingSet=CAP_SYS_ADMIN CAP_DAC_OVERRIDE CAP_DAC_READ_SEARCH CAP_FOWNER CAP_FSETID CAP_CHOWN CAP_MKNOD
-AmbientCapabilities=CAP_SYS_ADMIN CAP_DAC_OVERRIDE CAP_DAC_READ_SEARCH CAP_FOWNER CAP_FSETID CAP_CHOWN
+# CAP_SYS_ADMIN       - BTRFS subvolume and send/receive operations
+# CAP_DAC_OVERRIDE    - Bypass file read/write/execute permission checks
+# CAP_DAC_READ_SEARCH - Bypass directory read/search permission checks
+# CAP_FOWNER          - Chmod/chown/utime on files we don't own, set ACLs
+# CAP_FSETID          - Preserve setuid/setgid bits on files
+# CAP_CHOWN           - Change file ownership to any UID/GID
+# CAP_MKNOD           - Create device nodes (block/char devices)
+# CAP_SETFCAP         - Restore file capabilities (e.g., cap_net_raw on ping)
+# CAP_LINUX_IMMUTABLE - Handle immutable/append-only file flags
+# CAP_MAC_ADMIN       - Restore SELinux/Smack security labels
+CapabilityBoundingSet=CAP_SYS_ADMIN CAP_DAC_OVERRIDE CAP_DAC_READ_SEARCH CAP_FOWNER CAP_FSETID CAP_CHOWN CAP_MKNOD CAP_SETFCAP CAP_LINUX_IMMUTABLE CAP_MAC_ADMIN
+AmbientCapabilities=CAP_SYS_ADMIN CAP_DAC_OVERRIDE CAP_DAC_READ_SEARCH CAP_FOWNER CAP_FSETID CAP_CHOWN CAP_SETFCAP CAP_LINUX_IMMUTABLE CAP_MAC_ADMIN
 
 # -----------------------------------------------------------------------------
 # System Call Filtering
