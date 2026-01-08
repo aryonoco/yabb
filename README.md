@@ -225,5 +225,5 @@ This project uses two licenses:
 - **Code** (all files except those in `/docs` and `*.md` and `*.txt` files):
   [Mozilla Public License 2.0](LICENSE)
 
-- **Documentation** (contents of `/docs` directory and all `*.md` and `*.md` files):
+- **Documentation** (contents of `/docs` directory and all `*.md` and `*.txt` files):
   [Creative Commons Attribution 4.0 International](LICENSE-DOCS)
