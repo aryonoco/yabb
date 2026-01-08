@@ -14,20 +14,13 @@ YABB creates BTRFS snapshots, sends them to a backup location, and optionally de
 
 - Full and incremental backups (only sends changes)
 - Retention policies (keep 6 hourly, 7 daily, etc.)
-- Delete any snapshot without breaking the chain, even intermediate ones (each is independent after receive)
+- Delete any snapshot without breaking the chain, even intermediate ones
 - Snapshots carry their own metadata (no external tracking files)
 - Chain length limits (forces full backup after N incrementals)
 - Chain recovery when things go wrong
 - Dry-run mode to see what would happen
 - JSON output for scripting
 - Runs as a single static binary
-
-## What it doesn't do
-
-- No encryption (use LUKS if you need it)
-- No network transport (use SSH/rsync wrapper if remote)
-- No GUI
-- Linux only, BTRFS only
 
 ## Why another backup tool?
 
@@ -57,11 +50,13 @@ because the tools above aren't good.
 
 ```bash
 curl -fsSL --proto '=https' --tlsv1.2 https://raw.githubusercontent.com/aryonoco/yabb/main/scripts/setup-yabb.sh | sudo bash
-# Edit /etc/yabb.toml with your paths (installed automatically)
-sudo systemctl enable --now yabb.timer
+# Edit /etc/yabb.toml
+sudo systemctl enable yabb.service
+sudo systemctl enable yabb.timer
+sudo systemctl start yabb.timer
 ```
 
-The installer automatically installs config, shell completions, and systemd files to their proper system locations. It never overwrites existing config files.
+The installer automatically installs config, shell completions, and systemd files to their locations. It never overwrites existing config files.
 
 To update: `sudo /opt/yabb/scripts/setup-yabb.sh`
 
@@ -75,10 +70,10 @@ cd yabb
 just build-static
 sudo cp bin/yabb /usr/local/bin/
 sudo cp config/yabb.toml.example /etc/yabb.toml
-# Edit /etc/yabb.toml with your paths
+# Edit /etc/yabb.toml
 ```
 
-For a dynamically-linked release build: `just build-release`
+For a dynamically linked release build: `just build-release`
 
 ## Configuration
 
@@ -137,17 +132,15 @@ yabb optimize
 
 ### Automation
 
-YABB includes hardened systemd service files with security sandboxing.
+YABB includes service files.
 The installer automatically installs these to `/etc/systemd/system/`.
 
 ```bash
-# Configure paths for your setup (required)
-sudo mkdir -p /etc/systemd/system/yabb.service.d
-echo -e '[Service]\nReadWritePaths=/data /backup /snapshots' | sudo tee /etc/systemd/system/yabb.service.d/paths.conf
 sudo systemctl daemon-reload
-
+sudo systemctl enable yabb.service
+sudo systemctl enable yabb.timer
 # Enable daily backups
-sudo systemctl enable --now yabb.timer
+sudo systemctl start yabb.timer
 ```
 
 Check status: `systemctl list-timers yabb*`
@@ -170,7 +163,7 @@ Check status: `systemctl list-timers yabb*`
 
 ## Shell completions
 
-The installer automatically installs shell completions to system locations:
+The installer installs shell completions to the following locations:
 - Bash: `/etc/bash_completion.d/yabb`
 - Zsh: `/usr/local/share/zsh/site-functions/_yabb`
 - Fish: `/usr/share/fish/vendor_completions.d/yabb.fish`
@@ -189,8 +182,7 @@ sudo cp completions/yabb.fish /usr/share/fish/vendor_completions.d/
 <details>
 <summary>Architecture</summary>
 
-Written in Nim. Functional core, imperative shell pattern. Pure functions
-for logic, side effects only at the edges.
+Written in Nim. Functional core, imperative shell pattern.
 
 ```
 src/
