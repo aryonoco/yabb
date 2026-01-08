@@ -1964,11 +1964,13 @@ parse_arguments() {
   done
 
   # Validate argument combinations
-  if [[ ${REMOVE_MODE} == true ]]; then
-    [[ ${YABB_VERSION} != "latest" ]] && die "--remove and --version are mutually exclusive" "${EXIT_INVALID_ARGS}"
+  if [[ ${REMOVE_MODE} == true && ${YABB_VERSION} != "latest" ]]; then
+    die "--remove and --version are mutually exclusive" "${EXIT_INVALID_ARGS}"
   fi
 
-  [[ ${PURGE_CONFIG} == true && ${REMOVE_MODE} != true ]] && die "--purge requires --remove" "${EXIT_INVALID_ARGS}"
+  if [[ ${PURGE_CONFIG} == true && ${REMOVE_MODE} != true ]]; then
+    die "--purge requires --remove" "${EXIT_INVALID_ARGS}"
+  fi
 }
 
 #-------------------------------------------------------------------------------
