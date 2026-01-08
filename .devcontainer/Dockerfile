@@ -1,3 +1,10 @@
+# SPDX-License-Identifier: MPL-2.0
+# Copyright (c) 2023-2026 Aryan Ameri
+#
+# This Source Code Form is subject to the terms of the Mozilla Public
+# License, v. 2.0. If a copy of the MPL was not distributed with this
+# file, You can obtain one at https://mozilla.org/MPL/2.0/.
+#
 # =============================================================================
 # YABB Development Container
 # Nim development environment with Zig cross-compilation support
@@ -68,8 +75,8 @@ WORKDIR /home/vscode
 RUN echo "Installing Zig ${ZIG_VERSION}..." \
     && ARCH=$(uname -m) \
     && if [ "$ARCH" = "x86_64" ]; then ZIG_ARCH="x86_64"; \
-       elif [ "$ARCH" = "aarch64" ]; then ZIG_ARCH="aarch64"; \
-       else echo "Unsupported architecture: $ARCH" && exit 1; fi \
+    elif [ "$ARCH" = "aarch64" ]; then ZIG_ARCH="aarch64"; \
+    else echo "Unsupported architecture: $ARCH" && exit 1; fi \
     && curl -LO "https://ziglang.org/download/${ZIG_VERSION}/zig-${ZIG_ARCH}-linux-${ZIG_VERSION}.tar.xz" \
     && tar xf "zig-${ZIG_ARCH}-linux-${ZIG_VERSION}.tar.xz" \
     && mv "zig-${ZIG_ARCH}-linux-${ZIG_VERSION}" zig \
@@ -82,8 +89,8 @@ RUN echo "Installing Zig ${ZIG_VERSION}..." \
 RUN ARCH=$(uname -m) \
     && echo "Installing RISCstar RISC-V64 toolchain ${RISCSTAR_VERSION} for $ARCH host..." \
     && if [ "$ARCH" = "x86_64" ]; then RISCSTAR_HOST="x86_64"; \
-       elif [ "$ARCH" = "aarch64" ]; then RISCSTAR_HOST="aarch64"; \
-       else echo "Unsupported host architecture: $ARCH" && exit 1; fi \
+    elif [ "$ARCH" = "aarch64" ]; then RISCSTAR_HOST="aarch64"; \
+    else echo "Unsupported host architecture: $ARCH" && exit 1; fi \
     && curl --tlsv1.2 -LO "https://releases.riscstar.com/toolchain/${RISCSTAR_VERSION}/riscstar-toolchain-${RISCSTAR_VERSION}+qemu-${RISCSTAR_HOST}-riscv64-none-linux-musl.tar.xz" \
     && mkdir -p ~/riscv64-toolchain \
     && tar xf "riscstar-toolchain-${RISCSTAR_VERSION}+qemu-${RISCSTAR_HOST}-riscv64-none-linux-musl.tar.xz" -C ~/riscv64-toolchain --strip-components=1 \
@@ -94,8 +101,8 @@ RUN ARCH=$(uname -m) \
 # Nim expects riscv64-linux-gnu-* but RISCstar provides riscv64-none-linux-musl-*
 RUN cd ~/riscv64-toolchain/bin \
     && for tool in gcc g++ ar ld strip objcopy objdump ranlib nm readelf; do \
-         ln -sf "riscv64-none-linux-musl-$tool" "riscv64-linux-gnu-$tool"; \
-       done \
+    ln -sf "riscv64-none-linux-musl-$tool" "riscv64-linux-gnu-$tool"; \
+    done \
     && echo "Created Nim compatibility symlinks for RISC-V64 toolchain"
 
 # Install Nim from source (works on both AMD64 and ARM64)
@@ -117,11 +124,11 @@ RUN echo "Installing Nim ${NIM_VERSION} from source..." \
 ARG NIMLANGSERVER_VERSION
 RUN cd /tmp \
     && git clone --depth 1 --branch "v${NIMLANGSERVER_VERSION}" \
-       https://github.com/nim-lang/langserver.git nimlangserver \
+    https://github.com/nim-lang/langserver.git nimlangserver \
     && cd nimlangserver \
     && $HOME/nim-${NIM_VERSION}/bin/nimble setup --accept \
     && $HOME/nim-${NIM_VERSION}/bin/nim c -d:release \
-       -o:$HOME/nim-${NIM_VERSION}/bin/nimlangserver nimlangserver.nim \
+    -o:$HOME/nim-${NIM_VERSION}/bin/nimlangserver nimlangserver.nim \
     && cd / && rm -rf /tmp/nimlangserver
 
 # Create version-agnostic symlink for tooling configs

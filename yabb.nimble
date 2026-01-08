@@ -7,7 +7,7 @@
 #
 # Package
 
-version = "0.4.14"
+version = "0.4.15"
 author = "Aryan Ameri"
 description = "Yet Another BTRFS Backup"
 license = "MPL 2.0"
@@ -19,7 +19,7 @@ bin = @["yabb"]
 # Configuration
 # =============================================================================
 
-# Memory management - explicit ORC for cycle collection
+# Memory management
 --mm:
   orc
 
@@ -131,7 +131,6 @@ task releaseRiscv64, "Build static binary for RISC-V 64-bit Linux":
   # Uses RISCstar musl toolchain with lp64d ABI (hard-float)
   # Zig's musl uses soft-float which is incompatible with Debian riscv64
   # See: https://github.com/ziglang/zig/issues/4863
-  # Note: GCC for RISC-V doesn't support -mtune=generic, uses march default
   exec "nim c -d:release --opt:speed --mm:orc -d:lto " & "--cpu:riscv64 " &
     "--gcc.exe:riscv64-none-linux-musl-gcc " &
     "--gcc.linkerexe:riscv64-none-linux-musl-gcc " & "--passL:-static " &
