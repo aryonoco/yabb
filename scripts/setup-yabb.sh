@@ -14,7 +14,7 @@
 #
 # REQUIREMENTS:
 #   Bash 5.2+
-#   Linux (x86_64, aarch64, riscv64, ppc64le, armv7l or loongarch64)
+#   Linux (x86_64, aarch64, riscv64, ppc64le, armv7l, loongarch64, or mips64el)
 #   curl, tar, zstd, sha256sum, flock
 #
 # USAGE (please manually verify content first!):
@@ -171,6 +171,7 @@ declare -rA ARCH_MAP=(
   [riscv64]="riscv64"
   [ppc64le]="ppc64le"
   [loongarch64]="loong64"
+  [mips64el]="mips64el"
 )
 
 #-------------------------------------------------------------------------------

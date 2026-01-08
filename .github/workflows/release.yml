@@ -8,7 +8,7 @@
 # =============================================================================
 # YABB Release Workflow
 # Cross-compiles static binaries for all architectures
-# - amd64, arm64, armv7l, ppc64le, loong64: Zig cross-compilation
+# - amd64, arm64, armv7l, ppc64le, loong64, mips64el: Zig cross-compilation
 # - riscv64: RISCstar toolchain (Zig's musl has ABI incompatibility)
 # - armv5l: Bootlin toolchain (Zig's musl emits NEON instructions)
 # Note: armv7l requires NEON (Zig's musl is compiled with NEON optimisations)
@@ -61,6 +61,11 @@ jobs:
             target: loongarch64-linux-musl
             nimcpu: "--cpu:loongarch64"
             march: "-march=loongarch64"
+            toolchain: zig
+          - arch: mips64el
+            target: mips64el-linux-muslabi64
+            nimcpu: "--cpu:mips64"
+            march: "-mcpu=mips64r2"
             toolchain: zig
           - arch: armv5l
             nimcpu: "--cpu:arm"

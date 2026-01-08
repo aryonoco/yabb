@@ -7,7 +7,7 @@ Installation Guide
 REQUIREMENTS
 ------------
 - Linux with BTRFS filesystems (source and destination must both be BTRFS)
-- Supported architectures: x86_64, aarch64, armv7l, armv5l, riscv64, ppc64le, loongarch64
+- Supported architectures: x86_64, aarch64, armv7l, armv5l, riscv64, ppc64le, loongarch64, mips64el
 - Root access (sudo) for backup operations
 - Bash 5.2 or newer (for automatic installer)
 - btrfs-progs 5.14 or newer

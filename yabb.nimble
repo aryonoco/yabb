@@ -7,7 +7,7 @@
 #
 # Package
 
-version = "0.4.21"
+version = "0.4.22"
 author = "Aryan Ameri"
 description = "Yet Another BTRFS Backup"
 license = "MPL 2.0"
@@ -179,6 +179,17 @@ task releaseLoong64, "Build static binary for LoongArch64 Linux":
   exec "llvm-strip -s bin/yabb-linux-loong64"
   echo "Built: bin/yabb-linux-loong64"
 
+task releaseMips64el, "Build static binary for MIPS64EL Linux":
+  # Debian mips64el: MIPS64R2 baseline, N64 ABI, hard-float
+  # Uses Zig cross-compilation with musl
+  # See: https://wiki.debian.org/MIPSPort
+  exec "nim c " & releaseFlags & " " & zigccFlags & " " & "--cpu:mips64 " &
+    "--passC:'-target mips64el-linux-muslabi64' " &
+    "--passL:'-target mips64el-linux-muslabi64' " & "--passC:-mcpu=mips64r2 " & ltoFlags &
+    " -o:bin/yabb-linux-mips64el src/yabb.nim"
+  exec "llvm-strip -s bin/yabb-linux-mips64el"
+  echo "Built: bin/yabb-linux-mips64el"
+
 task releaseAll, "Build static binaries for all Linux architectures":
   exec "nimble releaseAmd64"
   exec "nimble releaseArm64"
@@ -186,6 +197,7 @@ task releaseAll, "Build static binaries for all Linux architectures":
   exec "nimble releaseRiscv64"
   exec "nimble releasePpc64le"
   exec "nimble releaseLoong64"
+  exec "nimble releaseMips64el"
   echo ""
   echo "All architectures built:"
   exec "ls -lh bin/yabb-linux-*"
