@@ -162,7 +162,7 @@ jobs:
         uses: actions/download-artifact@v4
         with:
           name: nim-${{ env.NIM_VERSION }}
-          path: ~
+          path: /home/runner
 
       - name: Extract Nim
         run: |
