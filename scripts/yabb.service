@@ -82,8 +82,8 @@ RestrictSUIDSGID=yes
 # -----------------------------------------------------------------------------
 # Capabilities (BTRFS requires CAP_SYS_ADMIN)
 # -----------------------------------------------------------------------------
-CapabilityBoundingSet=CAP_SYS_ADMIN CAP_DAC_OVERRIDE CAP_DAC_READ_SEARCH CAP_FOWNER CAP_CHOWN CAP_MKNOD
-AmbientCapabilities=CAP_SYS_ADMIN CAP_DAC_OVERRIDE CAP_DAC_READ_SEARCH CAP_FOWNER CAP_CHOWN
+CapabilityBoundingSet=CAP_SYS_ADMIN CAP_DAC_OVERRIDE CAP_DAC_READ_SEARCH CAP_FOWNER CAP_FSETID CAP_CHOWN CAP_MKNOD
+AmbientCapabilities=CAP_SYS_ADMIN CAP_DAC_OVERRIDE CAP_DAC_READ_SEARCH CAP_FOWNER CAP_FSETID CAP_CHOWN
 
 # -----------------------------------------------------------------------------
 # System Call Filtering
