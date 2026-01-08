@@ -30,11 +30,11 @@ This downloads the latest release, verifies checksums, and installs to /opt/yabb
 
 1. Run the installer:
 
-   curl -fsSL https://raw.githubusercontent.com/aryonoco/yabb/main/scripts/install.sh | sudo bash
+   curl -fsSL --proto '=https' --tlsv1.2 https://raw.githubusercontent.com/aryonoco/yabb/main/scripts/install.sh | sudo bash
 
    Or download and inspect first:
 
-   curl -fsSL https://raw.githubusercontent.com/aryonoco/yabb/main/scripts/install.sh -o install.sh
+   curl -fsSL --proto '=https' --tlsv1.2 https://raw.githubusercontent.com/aryonoco/yabb/main/scripts/install.sh -o install.sh
    less install.sh  # Review the script
    sudo bash install.sh
 

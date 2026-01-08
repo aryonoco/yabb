@@ -56,7 +56,7 @@ because the tools above aren't good.
 ### Automatic (recommended)
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/aryonoco/yabb/main/scripts/install.sh | sudo bash
+curl -fsSL --proto '=https' --tlsv1.2 https://raw.githubusercontent.com/aryonoco/yabb/main/scripts/install.sh | sudo bash
 sudo cp /opt/yabb/yabb.conf /etc/yabb.toml
 # Edit /etc/yabb.toml with your paths
 ```
