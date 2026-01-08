@@ -366,7 +366,7 @@ retry_with_backoff() {
     ((delay > 60)) && delay=60
 
     sleep "${delay}"
-    ((attempt++))
+    ((++attempt))
   done
 }
 
@@ -1355,7 +1355,7 @@ install_shell_completions() {
   # shellcheck disable=SC2310
   if has_command bash && [[ -f ${src_dir}/yabb.bash ]]; then
     if install_file_overwrite "${src_dir}/yabb.bash" "${BASH_COMPLETION_DIR}/yabb"; then
-      ((installed++))
+      ((++installed))
     fi
   fi
 
@@ -1363,7 +1363,7 @@ install_shell_completions() {
   # shellcheck disable=SC2310
   if has_command zsh && [[ -f ${src_dir}/yabb.zsh ]]; then
     if install_file_overwrite "${src_dir}/yabb.zsh" "${ZSH_COMPLETION_DIR}/_yabb"; then
-      ((installed++))
+      ((++installed))
     fi
   fi
 
@@ -1371,7 +1371,7 @@ install_shell_completions() {
   # shellcheck disable=SC2310
   if has_command fish && [[ -f ${src_dir}/yabb.fish ]]; then
     if install_file_overwrite "${src_dir}/yabb.fish" "${FISH_COMPLETION_DIR}/yabb.fish"; then
-      ((installed++))
+      ((++installed))
     fi
   fi
 
@@ -1394,7 +1394,7 @@ install_systemd_files() {
     if [[ -f ${src_dir}/${sfile} ]]; then
       # shellcheck disable=SC2310  # Intentional: optional install, failures should not exit
       if install_file_overwrite "${src_dir}/${sfile}" "${SYSTEMD_UNIT_DIR}/${sfile}"; then
-        ((installed++))
+        ((++installed))
       fi
     fi
   done
@@ -1502,19 +1502,19 @@ health_check() {
   # Check binary responds
   if "${INSTALL_DIR}/yabb" --help &> /dev/null; then
     log_debug "Health: Binary responds to --help"
-    ((score++))
+    ((++score))
   fi
 
   # Check version output
   if "${INSTALL_DIR}/yabb" --version &> /dev/null; then
     log_debug "Health: Version command works"
-    ((score++))
+    ((++score))
   fi
 
   # Check validate command exists
   if "${INSTALL_DIR}/yabb" validate --help &> /dev/null 2>&1; then
     log_debug "Health: Validate command available"
-    ((score++))
+    ((++score))
   fi
 
   # Check no stale artifacts
@@ -1523,7 +1523,7 @@ health_check() {
   rollback="$(rollback_dir)"
   if [[ ! -d ${staging} ]] && [[ ! -d ${rollback} ]]; then
     log_debug "Health: No stale artifacts"
-    ((score++))
+    ((++score))
   fi
 
   log_info "Health check score: ${score}/${max_score}"
