@@ -57,13 +57,15 @@ because the tools above aren't good.
 
 ```bash
 curl -fsSL --proto '=https' --tlsv1.2 https://raw.githubusercontent.com/aryonoco/yabb/main/scripts/install.sh | sudo bash
-sudo cp /opt/yabb/yabb.conf /etc/yabb.toml
-# Edit /etc/yabb.toml with your paths
+# Edit /etc/yabb.toml with your paths (installed automatically)
+sudo systemctl enable --now yabb.timer yabb-update.timer
 ```
 
-To update: `sudo /opt/yabb/install.sh --force`
+The installer automatically installs config, shell completions, and systemd files to their proper system locations. It never overwrites existing files.
 
-To uninstall: `sudo /opt/yabb/install.sh --remove`
+To update: `sudo /opt/yabb/scripts/install.sh --force`
+
+To uninstall: `sudo /opt/yabb/scripts/install.sh --remove`
 
 ### Build from source
 
@@ -135,19 +137,16 @@ yabb optimize
 
 ### Automation
 
-YABB includes hardened systemd service files with security sandboxing:
+YABB includes hardened systemd service files with security sandboxing.
+The installer automatically installs these to `/etc/systemd/system/`.
 
 ```bash
-# If installed via install.sh, service files are in /opt/yabb/
-sudo cp /opt/yabb/yabb.service /opt/yabb/yabb.timer /etc/systemd/system/
-sudo cp /opt/yabb/yabb-update.service /opt/yabb/yabb-update.timer /etc/systemd/system/
-
-# Configure paths for your setup
+# Configure paths for your setup (required)
 sudo mkdir -p /etc/systemd/system/yabb.service.d
 echo -e '[Service]\nReadWritePaths=/data /backup /snapshots' | sudo tee /etc/systemd/system/yabb.service.d/paths.conf
+sudo systemctl daemon-reload
 
 # Enable daily backups and weekly updates
-sudo systemctl daemon-reload
 sudo systemctl enable --now yabb.timer yabb-update.timer
 ```
 
@@ -171,14 +170,17 @@ Check status: `systemctl list-timers yabb*`
 
 ## Shell completions
 
+The installer automatically installs shell completions to system locations:
+- Bash: `/etc/bash_completion.d/yabb`
+- Zsh: `/usr/local/share/zsh/site-functions/_yabb`
+- Fish: `/usr/share/fish/vendor_completions.d/yabb.fish`
+
+Restart your shell to enable completions.
+
+If building from source, install manually:
 ```bash
-# Bash
-sudo cp completions/yabb.bash /etc/bash_completion.d/
-
-# Zsh
-sudo cp completions/yabb.zsh /usr/share/zsh/site-functions/_yabb
-
-# Fish
+sudo cp completions/yabb.bash /etc/bash_completion.d/yabb
+sudo cp completions/yabb.zsh /usr/local/share/zsh/site-functions/_yabb
 sudo cp completions/yabb.fish /usr/share/fish/vendor_completions.d/
 ```
 

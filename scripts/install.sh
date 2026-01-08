@@ -84,6 +84,21 @@ declare -r GITHUB_DOWNLOAD="https://github.com/${GITHUB_REPO}/releases/download"
 # Default paths
 declare -r DEFAULT_INSTALL_DIR="/opt/yabb"
 declare -r SYSTEM_CONFIG_PATH="/etc/yabb.toml"
+declare -r SYSTEM_CONFIG_DIR="/etc/yabb"
+
+# System installation paths
+declare -r SYSTEMD_UNIT_DIR="/etc/systemd/system"
+declare -r BASH_COMPLETION_DIR="/etc/bash_completion.d"
+declare -r ZSH_COMPLETION_DIR="/usr/local/share/zsh/site-functions"
+declare -r FISH_COMPLETION_DIR="/usr/share/fish/vendor_completions.d"
+
+# Systemd files to install
+declare -ra SYSTEMD_FILES=(
+  "yabb.service"
+  "yabb.timer"
+  "yabb-update.service"
+  "yabb-update.timer"
+)
 
 # Security: Domain allowlist for downloads
 declare -ra ALLOWED_DOWNLOAD_DOMAINS=(
@@ -240,6 +255,33 @@ confirm_action() {
   local response
   read -r response
   [[ ${response,,} =~ ^(y|yes)$ ]]
+}
+
+# Conservative file installation - never overwrites existing files
+# Returns 0 if installed, 1 if skipped (file exists), 2 on error
+install_file_conservative() {
+  local -r src="$1" dest="$2" mode="${3:-644}"
+
+  if [[ -f ${dest} ]]; then
+    log_info "Skipping ${dest} (already exists)"
+    return 1
+  fi
+
+  if [[ ${DRY_RUN} == true ]]; then
+    log_info "[DRY-RUN] Would install: ${dest}"
+    return 0
+  fi
+
+  local dest_dir="${dest%/*}"
+  if [[ -n ${dest_dir} && ! -d ${dest_dir} ]]; then
+    mkdir -p "${dest_dir}" || return 2
+  fi
+
+  cp "${src}" "${dest}" || return 2
+  chmod "${mode}" "${dest}" || return 2
+  register_created_file "${dest}"
+  log_success "Installed: ${dest}"
+  return 0
 }
 
 #-------------------------------------------------------------------------------
@@ -645,96 +687,160 @@ install_files() {
   local -r version_num="${RESOLVED_VERSION#v}"
   local -r extract_dir="${TEMP_DIR}/yabb-${version_num}-linux-${ARCH}"
 
-  # Create install directory
-  if [[ ! -d ${INSTALL_DIR} ]]; then
-    log_info "Creating directory: ${INSTALL_DIR}"
-    execute mkdir -p "${INSTALL_DIR}"
-    register_created_file "${INSTALL_DIR}"
+  # Step 4a: Install to /opt/yabb preserving directory structure
+  install_to_opt_dir "${extract_dir}"
+
+  # Step 4b: Install system config (conservative)
+  if [[ ${INSTALL_CONFIG} == true ]]; then
+    install_system_config "${extract_dir}"
   fi
 
-  # Install binary
-  log_info "Installing binary..."
-  if [[ ${DRY_RUN} == true ]]; then
-    log_info "[DRY-RUN] Would install: ${INSTALL_DIR}/yabb"
-  else
-    cp "${extract_dir}/yabb" "${INSTALL_DIR}/yabb"
-    chmod 755 "${INSTALL_DIR}/yabb"
-    register_created_file "${INSTALL_DIR}/yabb"
-  fi
-  log_success "Installed: ${INSTALL_DIR}/yabb"
-
-  # Install shell completions
+  # Step 4c: Install shell completions to system locations (conservative)
   if [[ ${INSTALL_COMPLETIONS} == true ]]; then
-    log_info "Installing shell completions..."
-    local comp
-    local -i installed=0
-    for comp in yabb.bash yabb.fish yabb.zsh; do
-      if [[ ${DRY_RUN} == true ]]; then
-        log_info "[DRY-RUN] Would install: ${INSTALL_DIR}/${comp}"
-        installed+=1
-      elif [[ -f ${extract_dir}/shell_completions/${comp} ]]; then
-        cp "${extract_dir}/shell_completions/${comp}" "${INSTALL_DIR}/"
-        register_created_file "${INSTALL_DIR}/${comp}"
-        installed+=1
-      fi
-    done
-    log_success "Installed ${installed} completion file(s) to ${INSTALL_DIR}/"
+    install_shell_completions "${extract_dir}"
   fi
 
-  # Install systemd service files
-  log_info "Installing systemd service files..."
-  local -a systemd_files=(
-    "yabb.service"
-    "yabb.timer"
-    "yabb-update.service"
-    "yabb-update.timer"
-    "yabb-update.conf"
-  )
+  # Step 4d: Install systemd files to system locations (conservative)
+  install_systemd_files "${extract_dir}"
+}
+
+install_to_opt_dir() {
+  local -r extract_dir="$1"
+
+  log_info "Installing to ${INSTALL_DIR}..."
+
+  if [[ ${DRY_RUN} == true ]]; then
+    log_info "[DRY-RUN] Would create: ${INSTALL_DIR}"
+    log_info "[DRY-RUN] Would copy archive contents preserving structure"
+    return 0
+  fi
+
+  # Remove old installation if exists (clean slate for new structure)
+  if [[ -d ${INSTALL_DIR} ]]; then
+    log_info "Removing existing installation at ${INSTALL_DIR}..."
+    rm -rf "${INSTALL_DIR}"
+  fi
+
+  # Create fresh directory
+  mkdir -p "${INSTALL_DIR}"
+  register_created_file "${INSTALL_DIR}"
+
+  # Copy entire extracted directory contents preserving structure
+  cp -a "${extract_dir}/." "${INSTALL_DIR}/"
+
+  # Set permissions
+  chmod 755 "${INSTALL_DIR}/yabb"
+  if [[ -f ${INSTALL_DIR}/scripts/install.sh ]]; then
+    chmod 755 "${INSTALL_DIR}/scripts/install.sh"
+  fi
+
+  log_success "Installed to ${INSTALL_DIR}/ with preserved directory structure"
+}
+
+install_system_config() {
+  local -r extract_dir="$1"
+
+  log_info "Checking system configuration..."
+
+  if [[ -f ${SYSTEM_CONFIG_PATH} ]]; then
+    log_info "Existing config found: ${SYSTEM_CONFIG_PATH} (not overwriting)"
+    log_info "Sample config available at: ${INSTALL_DIR}/yabb.conf"
+  else
+    log_info "Installing config to ${SYSTEM_CONFIG_PATH}..."
+    # shellcheck disable=SC2310
+    install_file_conservative "${extract_dir}/yabb.conf" "${SYSTEM_CONFIG_PATH}" 644 || true
+  fi
+}
+
+install_shell_completions() {
+  local -r extract_dir="$1"
+
+  log_info "Installing shell completions to system locations..."
+
+  local -i installed=0
+
+  # Bash completion - install if bash exists on system
+  # shellcheck disable=SC2310
+  if has_command bash; then
+    if [[ -f ${extract_dir}/shell_completions/yabb.bash ]]; then
+      # shellcheck disable=SC2310
+      if install_file_conservative "${extract_dir}/shell_completions/yabb.bash" \
+        "${BASH_COMPLETION_DIR}/yabb" 644; then
+        ((installed++)) || true
+      fi
+    fi
+  fi
+
+  # Zsh completion - install if zsh exists on system
+  # shellcheck disable=SC2310
+  if has_command zsh; then
+    if [[ -f ${extract_dir}/shell_completions/yabb.zsh ]]; then
+      # shellcheck disable=SC2310
+      if install_file_conservative "${extract_dir}/shell_completions/yabb.zsh" \
+        "${ZSH_COMPLETION_DIR}/_yabb" 644; then
+        ((installed++)) || true
+      fi
+    fi
+  fi
+
+  # Fish completion - install if fish exists on system
+  # shellcheck disable=SC2310
+  if has_command fish; then
+    if [[ -f ${extract_dir}/shell_completions/yabb.fish ]]; then
+      # shellcheck disable=SC2310
+      if install_file_conservative "${extract_dir}/shell_completions/yabb.fish" \
+        "${FISH_COMPLETION_DIR}/yabb.fish" 644; then
+        ((installed++)) || true
+      fi
+    fi
+  fi
+
+  if ((installed > 0)); then
+    log_success "Installed ${installed} shell completion file(s) to system locations"
+  else
+    log_info "No new shell completions installed (all already exist or shells not available)"
+  fi
+}
+
+install_systemd_files() {
+  local -r extract_dir="$1"
+
+  log_info "Installing systemd service files to ${SYSTEMD_UNIT_DIR}..."
+
+  local -i installed=0
   local sfile
-  for sfile in "${systemd_files[@]}"; do
-    if [[ ${DRY_RUN} == true ]]; then
-      log_info "[DRY-RUN] Would install: ${INSTALL_DIR}/${sfile}"
-    elif [[ -f ${extract_dir}/scripts/${sfile} ]]; then
-      cp "${extract_dir}/scripts/${sfile}" "${INSTALL_DIR}/"
-      register_created_file "${INSTALL_DIR}/${sfile}"
+
+  for sfile in "${SYSTEMD_FILES[@]}"; do
+    if [[ -f ${extract_dir}/scripts/${sfile} ]]; then
+      # shellcheck disable=SC2310
+      if install_file_conservative "${extract_dir}/scripts/${sfile}" \
+        "${SYSTEMD_UNIT_DIR}/${sfile}" 644; then
+        ((installed++)) || true
+      fi
     fi
   done
-  log_success "Installed systemd files to ${INSTALL_DIR}/"
 
-  # Install install.sh itself for future updates
-  if [[ ${DRY_RUN} == true ]]; then
-    log_info "[DRY-RUN] Would install: ${INSTALL_DIR}/install.sh"
-  elif [[ -f ${extract_dir}/scripts/install.sh ]]; then
-    cp "${extract_dir}/scripts/install.sh" "${INSTALL_DIR}/"
-    chmod +x "${INSTALL_DIR}/install.sh"
-    register_created_file "${INSTALL_DIR}/install.sh"
-    log_success "Installed: ${INSTALL_DIR}/install.sh"
+  # Install yabb-update.conf to /etc/yabb/
+  if [[ -f ${extract_dir}/scripts/yabb-update.conf ]]; then
+    # shellcheck disable=SC2310
+    install_file_conservative "${extract_dir}/scripts/yabb-update.conf" \
+      "${SYSTEM_CONFIG_DIR}/update.conf" 644 || true
   fi
 
-  # Handle configuration
-  if [[ ${INSTALL_CONFIG} == true ]]; then
-    # Always copy sample config to install dir as reference
+  # Run daemon-reload if any systemd files were installed
+  if ((installed > 0)); then
+    log_info "Running systemctl daemon-reload..."
     if [[ ${DRY_RUN} == true ]]; then
-      log_info "[DRY-RUN] Would copy sample config to: ${INSTALL_DIR}/yabb.conf"
+      log_info "[DRY-RUN] Would run: systemctl daemon-reload"
     else
-      cp "${extract_dir}/yabb.conf" "${INSTALL_DIR}/yabb.conf"
-      register_created_file "${INSTALL_DIR}/yabb.conf"
-    fi
-
-    # Handle system config
-    if [[ -f ${SYSTEM_CONFIG_PATH} ]]; then
-      log_info "Existing config found: ${SYSTEM_CONFIG_PATH}"
-      log_info "Sample config available at: ${INSTALL_DIR}/yabb.conf"
-    else
-      log_info "Installing config to ${SYSTEM_CONFIG_PATH}..."
-      if [[ ${DRY_RUN} == true ]]; then
-        log_info "[DRY-RUN] Would install config to: ${SYSTEM_CONFIG_PATH}"
-      else
-        cp "${extract_dir}/yabb.conf" "${SYSTEM_CONFIG_PATH}"
-        register_created_file "${SYSTEM_CONFIG_PATH}"
+      # shellcheck disable=SC2310
+      if has_command systemctl; then
+        systemctl daemon-reload || log_warn "Failed to run daemon-reload"
       fi
-      log_success "Config installed (edit before first use)"
     fi
+    log_success "Installed ${installed} systemd unit file(s)"
+  else
+    log_info "No new systemd files installed (all already exist)"
   fi
 }
 
@@ -749,28 +855,39 @@ print_summary() {
   printf '%b' "${COLORS[reset]}"
 
   printf '\nInstalled version: %s\n' "${RESOLVED_VERSION}"
-  printf 'Binary:            %s/yabb\n' "${INSTALL_DIR}"
+
+  printf '\nInstallation locations:\n'
+  printf '  Binary:            %s/yabb\n' "${INSTALL_DIR}"
+  printf '  Scripts:           %s/scripts/\n' "${INSTALL_DIR}"
+  printf '  Completions:       %s/shell_completions/\n' "${INSTALL_DIR}"
 
   if [[ -f ${SYSTEM_CONFIG_PATH} ]]; then
-    printf 'Config:            %s\n' "${SYSTEM_CONFIG_PATH}"
+    printf '  Config:            %s\n' "${SYSTEM_CONFIG_PATH}"
   else
-    printf 'Sample config:     %s/yabb.conf\n' "${INSTALL_DIR}"
+    printf '  Sample config:     %s/yabb.conf\n' "${INSTALL_DIR}"
   fi
+
+  printf '\nSystem-wide installations:\n'
+  [[ -f ${BASH_COMPLETION_DIR}/yabb ]] && printf '  Bash completion:   %s/yabb\n' "${BASH_COMPLETION_DIR}"
+  [[ -f ${ZSH_COMPLETION_DIR}/_yabb ]] && printf '  Zsh completion:    %s/_yabb\n' "${ZSH_COMPLETION_DIR}"
+  [[ -f ${FISH_COMPLETION_DIR}/yabb.fish ]] && printf '  Fish completion:   %s/yabb.fish\n' "${FISH_COMPLETION_DIR}"
+  [[ -f ${SYSTEMD_UNIT_DIR}/yabb.service ]] && printf '  Systemd units:     %s/yabb*.{service,timer}\n' "${SYSTEMD_UNIT_DIR}"
+  [[ -f ${SYSTEM_CONFIG_DIR}/update.conf ]] && printf '  Update config:     %s/update.conf\n' "${SYSTEM_CONFIG_DIR}"
 
   printf '\nNext steps:\n'
   local -i step=1
   if [[ ! -f ${SYSTEM_CONFIG_PATH} ]]; then
-    printf '  %d. Create config:  sudo cp %s/yabb.conf %s\n' "${step}" "${INSTALL_DIR}" "${SYSTEM_CONFIG_PATH}"
+    printf '  %d. Create config:   sudo cp %s/yabb.conf %s\n' "${step}" "${INSTALL_DIR}" "${SYSTEM_CONFIG_PATH}"
     ((step++)) || true
   fi
-  printf '  %d. Edit config:    sudo nano %s\n' "${step}" "${SYSTEM_CONFIG_PATH}"
+  printf '  %d. Edit config:     sudo nano %s\n' "${step}" "${SYSTEM_CONFIG_PATH}"
   ((step++)) || true
   # shellcheck disable=SC2016  # Intentional: show literal $PATH for user to copy
-  printf '  %d. Add to PATH:    export PATH="%s:$PATH"\n' "${step}" "${INSTALL_DIR}"
+  printf '  %d. Add to PATH:     export PATH="%s:$PATH"\n' "${step}" "${INSTALL_DIR}"
   ((step++)) || true
-  printf '  %d. Verify:         %s/yabb --help\n' "${step}" "${INSTALL_DIR}"
+  printf '  %d. Verify:          %s/yabb --help\n' "${step}" "${INSTALL_DIR}"
   ((step++)) || true
-  printf '  %d. Validate:       sudo %s/yabb validate\n' "${step}" "${INSTALL_DIR}"
+  printf '  %d. Enable timers:   sudo systemctl enable --now yabb.timer yabb-update.timer\n' "${step}"
   printf '\n'
 }
 
@@ -782,13 +899,14 @@ run_removal() {
 
   # Confirm unless --force
   # shellcheck disable=SC2310  # Intentional: confirm_action returns status for branching
-  if ! confirm_action "Remove YABB from ${INSTALL_DIR}?"; then
+  if ! confirm_action "Remove YABB from ${INSTALL_DIR} and system locations?"; then
     log_info "Removal cancelled"
     exit "${EXIT_SUCCESS}"
   fi
 
-  remove_step_binary
-  remove_step_completions
+  remove_step_install_dir
+  remove_step_shell_completions
+  remove_step_systemd_files
 
   if [[ ${PURGE_CONFIG} == true ]]; then
     remove_step_config
@@ -801,62 +919,89 @@ run_removal() {
   printf '%b\n' "${COLORS[reset]}"
 }
 
-remove_step_binary() {
-  log_step "1/3" "Removing binary"
+remove_step_install_dir() {
+  log_step "1/4" "Removing installation directory"
 
-  if [[ -f "${INSTALL_DIR}/yabb" ]]; then
-    execute rm -f "${INSTALL_DIR}/yabb"
-    log_success "Removed: ${INSTALL_DIR}/yabb"
+  if [[ -d ${INSTALL_DIR} ]]; then
+    execute rm -rf "${INSTALL_DIR}"
+    log_success "Removed: ${INSTALL_DIR}"
   else
-    log_warn "Binary not found: ${INSTALL_DIR}/yabb"
+    log_warn "Installation directory not found: ${INSTALL_DIR}"
   fi
 }
 
-remove_step_completions() {
-  log_step "2/3" "Removing shell completions, systemd files, and sample config"
+remove_step_shell_completions() {
+  log_step "2/4" "Removing shell completions from system locations"
 
-  local -a files_to_remove=(
-    "${INSTALL_DIR}/yabb.bash"
-    "${INSTALL_DIR}/yabb.fish"
-    "${INSTALL_DIR}/yabb.zsh"
-    "${INSTALL_DIR}/yabb.conf"
-    "${INSTALL_DIR}/yabb.service"
-    "${INSTALL_DIR}/yabb.timer"
-    "${INSTALL_DIR}/yabb-update.service"
-    "${INSTALL_DIR}/yabb-update.timer"
-    "${INSTALL_DIR}/yabb-update.conf"
-    "${INSTALL_DIR}/install.sh"
+  local -a completion_files=(
+    "${BASH_COMPLETION_DIR}/yabb"
+    "${ZSH_COMPLETION_DIR}/_yabb"
+    "${FISH_COMPLETION_DIR}/yabb.fish"
   )
 
   local file
   local -i removed=0
-  for file in "${files_to_remove[@]}"; do
+  for file in "${completion_files[@]}"; do
     if [[ -f ${file} ]]; then
       execute rm -f "${file}"
-      removed+=1
+      log_info "Removed: ${file}"
+      ((removed++)) || true
     fi
   done
 
   if ((removed > 0)); then
-    log_success "Removed ${removed} file(s)"
+    log_success "Removed ${removed} shell completion file(s)"
   else
-    log_info "No additional files found"
+    log_info "No shell completion files found to remove"
+  fi
+}
+
+remove_step_systemd_files() {
+  log_step "3/4" "Removing systemd service files"
+
+  local -i removed=0
+  local sfile
+
+  for sfile in "${SYSTEMD_FILES[@]}"; do
+    if [[ -f ${SYSTEMD_UNIT_DIR}/${sfile} ]]; then
+      execute rm -f "${SYSTEMD_UNIT_DIR}/${sfile}"
+      log_info "Removed: ${SYSTEMD_UNIT_DIR}/${sfile}"
+      ((removed++)) || true
+    fi
+  done
+
+  # Remove update config from /etc/yabb/
+  if [[ -f ${SYSTEM_CONFIG_DIR}/update.conf ]]; then
+    execute rm -f "${SYSTEM_CONFIG_DIR}/update.conf"
+    log_info "Removed: ${SYSTEM_CONFIG_DIR}/update.conf"
+    ((removed++)) || true
   fi
 
-  # Remove install directory if empty
-  if [[ -d ${INSTALL_DIR} ]]; then
+  # Remove /etc/yabb directory if empty
+  if [[ -d ${SYSTEM_CONFIG_DIR} ]]; then
     # shellcheck disable=SC2312  # Intentional: checking if output is empty, not exit code
-    if [[ -z $(ls -A "${INSTALL_DIR}" 2> /dev/null) ]]; then
-      execute rmdir "${INSTALL_DIR}"
-      log_success "Removed empty directory: ${INSTALL_DIR}"
-    else
-      log_info "Directory not empty, keeping: ${INSTALL_DIR}"
+    if [[ -z $(ls -A "${SYSTEM_CONFIG_DIR}" 2> /dev/null) ]]; then
+      execute rmdir "${SYSTEM_CONFIG_DIR}"
+      log_info "Removed empty directory: ${SYSTEM_CONFIG_DIR}"
     fi
+  fi
+
+  if ((removed > 0)); then
+    log_info "Running systemctl daemon-reload..."
+    if [[ ${DRY_RUN} != true ]]; then
+      # shellcheck disable=SC2310
+      if has_command systemctl; then
+        systemctl daemon-reload || true
+      fi
+    fi
+    log_success "Removed ${removed} systemd file(s)"
+  else
+    log_info "No systemd files found to remove"
   fi
 }
 
 remove_step_config() {
-  log_step "3/3" "Removing configuration"
+  log_step "4/4" "Removing configuration"
 
   # System config
   if [[ -f ${SYSTEM_CONFIG_PATH} ]]; then
@@ -904,16 +1049,22 @@ DESCRIPTION:
   Download and install YABB (Yet Another BTRFS Backup) from GitHub releases.
   Automatically detects architecture (x86_64/aarch64/riscv64/ppc64le/loongarch64) and verifies checksums.
 
+  The installer preserves the archive directory structure in ${DEFAULT_INSTALL_DIR} and
+  installs shell completions and systemd files to their proper system locations.
+
+  CONSERVATIVE: Never overwrites existing files in system locations.
+
 INSTALLATION OPTIONS:
   -d, --dir PATH       Install directory (default: ${DEFAULT_INSTALL_DIR})
   -v, --version VER    Install specific version (default: latest)
                        Example: --version v0.4.3
-  --no-config          Skip config file installation
-  --no-completions     Skip shell completion installation
+  --no-config          Skip config file installation to /etc/yabb.toml
+  --no-completions     Skip shell completion installation to system locations
 
 REMOVAL OPTIONS:
-  --remove             Remove YABB binary and completions
-  --purge              Also remove config files (/etc/yabb.toml and user config)
+  --remove             Remove YABB from ${DEFAULT_INSTALL_DIR} and system locations
+                       (completions, systemd files). Does NOT remove config.
+  --purge              Also remove config files (/etc/yabb.toml, /etc/yabb/, user config)
   -f, --force          Skip confirmation prompts
 
 GENERAL OPTIONS:
@@ -923,6 +1074,15 @@ GENERAL OPTIONS:
 
 ENVIRONMENT:
   TRACE=1              Enable bash debug tracing (set -x)
+
+INSTALLATION LOCATIONS:
+  Binary & scripts:    ${DEFAULT_INSTALL_DIR}/
+  System config:       /etc/yabb.toml
+  Update config:       /etc/yabb/update.conf
+  Bash completion:     /etc/bash_completion.d/yabb
+  Zsh completion:      /usr/local/share/zsh/site-functions/_yabb
+  Fish completion:     /usr/share/fish/vendor_completions.d/yabb.fish
+  Systemd units:       /etc/systemd/system/yabb*.{service,timer}
 
 EXAMPLES:
   # Install latest version

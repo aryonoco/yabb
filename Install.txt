@@ -26,7 +26,13 @@ OPTION A: AUTOMATIC INSTALLATION (Recommended)
 ================================================================================
 
 The easiest way to install YABB is using the automatic installer script.
-This downloads the latest release, verifies checksums, and installs to /opt/yabb.
+This downloads the latest release, verifies checksums, and installs:
+  - Binary and scripts to /opt/yabb/
+  - Configuration to /etc/yabb.toml (if not already present)
+  - Shell completions to system locations (bash, zsh, fish)
+  - Systemd service files to /etc/systemd/system/
+
+The installer is CONSERVATIVE: it never overwrites existing files.
 
 1. Run the installer:
 
@@ -38,9 +44,8 @@ This downloads the latest release, verifies checksums, and installs to /opt/yabb
    less install.sh  # Review the script
    sudo bash install.sh
 
-2. Create your configuration file:
+2. Edit your configuration file:
 
-   sudo cp /opt/yabb/yabb.conf /etc/yabb.toml
    sudo nano /etc/yabb.toml    # or your preferred editor
 
    Update the [paths] section with your actual directories:
@@ -52,12 +57,16 @@ This downloads the latest release, verifies checksums, and installs to /opt/yabb
 
    /opt/yabb/yabb --help
 
+4. Enable automated backups and updates:
+
+   sudo systemctl enable --now yabb.timer yabb-update.timer
+
 
 UPDATING YABB
 -------------
 To update to the latest version:
 
-   sudo /opt/yabb/install.sh --force
+   sudo /opt/yabb/scripts/install.sh --force
 
 Or use the systemd timer for automatic weekly updates (see SYSTEMD section below).
 
@@ -66,11 +75,11 @@ UNINSTALLING YABB
 -----------------
 Remove YABB but keep configuration:
 
-   sudo /opt/yabb/install.sh --remove
+   sudo /opt/yabb/scripts/install.sh --remove
 
 Remove YABB and all configuration:
 
-   sudo /opt/yabb/install.sh --purge
+   sudo /opt/yabb/scripts/install.sh --remove --purge --force
 
 
 ================================================================================
@@ -248,22 +257,14 @@ SYSTEMD AUTOMATION (Recommended)
 YABB includes hardened systemd service files for automated backups and updates.
 These use modern systemd 257 features for security hardening.
 
-INSTALLING THE SERVICE FILES
-----------------------------
-If you used the automatic installer (Option A), the service files are already
-in /opt/yabb/. Copy them to systemd:
+ENABLING THE TIMERS
+-------------------
+If you used the automatic installer (Option A), the systemd service files are
+ALREADY installed to /etc/systemd/system/. Just enable the timers:
 
-   sudo cp /opt/yabb/yabb.service /etc/systemd/system/
-   sudo cp /opt/yabb/yabb.timer /etc/systemd/system/
-   sudo cp /opt/yabb/yabb-update.service /etc/systemd/system/
-   sudo cp /opt/yabb/yabb-update.timer /etc/systemd/system/
+   sudo systemctl enable --now yabb.timer yabb-update.timer
 
-   # Optional: create update config directory
-   sudo mkdir -p /etc/yabb
-   sudo cp /opt/yabb/yabb-update.conf /etc/yabb/update.conf
-
-If you installed from tarball (Option B/C), the service files are in the
-scripts/ directory of the extracted archive:
+If you installed from tarball (Option B/C), copy the service files first:
 
    sudo cp yabb-*/scripts/yabb.service /etc/systemd/system/
    sudo cp yabb-*/scripts/yabb.timer /etc/systemd/system/
@@ -271,12 +272,8 @@ scripts/ directory of the extracted archive:
    sudo cp yabb-*/scripts/yabb-update.timer /etc/systemd/system/
    sudo mkdir -p /etc/yabb
    sudo cp yabb-*/scripts/yabb-update.conf /etc/yabb/update.conf
-
-Reload systemd and enable the timers:
-
    sudo systemctl daemon-reload
-   sudo systemctl enable --now yabb.timer
-   sudo systemctl enable --now yabb-update.timer
+   sudo systemctl enable --now yabb.timer yabb-update.timer
 
 
 WHAT THE SERVICES DO

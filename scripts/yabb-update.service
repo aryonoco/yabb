@@ -17,7 +17,7 @@ After=network-online.target
 Wants=network-online.target
 
 # Only run if install script exists
-ConditionPathExists=/opt/yabb/install.sh
+ConditionPathExists=/opt/yabb/scripts/install.sh
 
 
 [Service]
@@ -25,10 +25,10 @@ Type=oneshot
 RemainAfterExit=no
 
 # Pre-flight check: verify script is executable
-ExecCondition=/usr/bin/test -x /opt/yabb/install.sh
+ExecCondition=/usr/bin/test -x /opt/yabb/scripts/install.sh
 
 # Run the installer with --force to update even if already installed
-ExecStart=/opt/yabb/install.sh --force
+ExecStart=/opt/yabb/scripts/install.sh --force
 
 # Timeouts
 TimeoutStartSec=300
@@ -50,9 +50,14 @@ ProtectHome=yes
 ProtectProc=invisible
 ProcSubset=pid
 
-# Allow writes to installation directory and config
+# Allow writes to installation directory and system locations
 ReadWritePaths=/opt/yabb
 ReadWritePaths=-/etc/yabb.toml
+ReadWritePaths=-/etc/yabb
+ReadWritePaths=-/etc/systemd/system
+ReadWritePaths=-/etc/bash_completion.d
+ReadWritePaths=-/usr/local/share/zsh/site-functions
+ReadWritePaths=-/usr/share/fish/vendor_completions.d
 
 # -----------------------------------------------------------------------------
 # Kernel Protection
