@@ -156,6 +156,7 @@ jobs:
           cd ~
           TOOLCHAIN_URL="https://toolchains.bootlin.com/downloads/releases/toolchains/armv5-eabi/tarballs"
           TOOLCHAIN_FILE="${{ env.BOOTLIN_ARMV5_VERSION }}.tar.xz"
+          CHECKSUM_FILE="${{ env.BOOTLIN_ARMV5_VERSION }}.sha256"
 
           echo "Installing Bootlin ARMv5 toolchain ${{ env.BOOTLIN_ARMV5_VERSION }}..."
 
@@ -165,17 +166,17 @@ jobs:
             -o "${TOOLCHAIN_FILE}" \
             "${TOOLCHAIN_URL}/${TOOLCHAIN_FILE}"
           curl -fsSL --proto '=https' --tlsv1.2 \
-            -o "${TOOLCHAIN_FILE}.sha256" \
-            "${TOOLCHAIN_URL}/${TOOLCHAIN_FILE}.sha256"
+            -o "${CHECKSUM_FILE}" \
+            "${TOOLCHAIN_URL}/${CHECKSUM_FILE}"
 
           # Verify SHA256 checksum
           echo "Verifying SHA256 checksum..."
-          sha256sum -c "${TOOLCHAIN_FILE}.sha256"
+          sha256sum -c "${CHECKSUM_FILE}"
 
           # Extract toolchain
           mkdir -p armv5-toolchain
           tar xf "${TOOLCHAIN_FILE}" -C armv5-toolchain --strip-components=1
-          rm -f "${TOOLCHAIN_FILE}" "${TOOLCHAIN_FILE}.sha256"
+          rm -f "${TOOLCHAIN_FILE}" "${CHECKSUM_FILE}"
           echo "Bootlin ${{ env.BOOTLIN_ARMV5_VERSION }} installed and verified successfully"
 
       - name: Install Nim from source
