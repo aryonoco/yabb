@@ -7,7 +7,7 @@
 #
 # Package
 
-version = "0.4.24"
+version = "0.4.25"
 author = "Aryan Ameri"
 description = "Yet Another BTRFS Backup"
 license = "MPL 2.0"
@@ -108,11 +108,6 @@ const releaseFlags = "-d:release --opt:speed --mm:orc -d:lto"
 # Zig compiler flags
 const zigccFlags = "--cc:clang --clang.exe:zigcc --clang.linkerexe:zigcc"
 
-# LTO, GC sections, and strip flags for LLVM/Zig
-# - ffunction-sections/fdata-sections: put each function/data in own section
-# - gc-sections: remove unreferenced sections (dead code elimination)
-# - flto=thin: link-time optimization
-# - s: strip symbols
 const ltoFlags =
   "--passC:-ffunction-sections --passC:-fdata-sections " &
   "--passC:-flto=thin --passL:-flto=thin --passL:-Wl,--gc-sections --passL:-s"
@@ -133,8 +128,7 @@ task releaseArm64, "Build static binary for ARM64 Linux":
 
 task releaseArmv7l, "Build static binary for ARMv7 Linux (armhf)":
   # Debian armhf: ARMv7-A + VFPv3 + Thumb-2 + NEON, hard-float EABI
-  # Uses baseline (most conservative ARMv7-A target without CPU-specific tuning)
-  # Note: Zig's musl includes NEON-optimised routines, so NEON is required
+  # Note: Zig's musl includes NEON-optimised routines, so NEON is unavoidable
   exec "nim c " & releaseFlags & " " & zigccFlags & " " & "--cpu:arm " &
     "--passC:'-target arm-linux-musleabihf' " & "--passL:'-target arm-linux-musleabihf' " &
     "--passC:-mcpu=baseline " & ltoFlags & " -o:bin/yabb-linux-armv7l src/yabb.nim"
@@ -142,9 +136,10 @@ task releaseArmv7l, "Build static binary for ARMv7 Linux (armhf)":
 
 task releaseArmv5l, "Build static binary for ARMv5 Linux (armel - CI only)":
   # Debian armel: ARMv5T baseline, soft-float EABI
-  # Uses Bootlin musl toolchain (CI-only, not available locally)
+  # Uses Bootlin musl toolchain
+  # CI-only, not available in devcontainer due to lack of arm64 host support)
   # See: https://wiki.debian.org/ArmEabiPort
-  # Note: Using -flto=auto for parallel LTO (GCC's default is single-threaded)
+  # Using -flto=auto for parallel LTO
   exec "nim c -d:release --opt:speed --mm:orc " & "--cpu:arm " &
     "--gcc.exe:arm-buildroot-linux-musleabi-gcc " &
     "--gcc.linkerexe:arm-buildroot-linux-musleabi-gcc " & "--passL:-static " &
@@ -160,7 +155,6 @@ task releaseRiscv64, "Build static binary for RISC-V 64-bit Linux":
   # Uses RISCstar musl toolchain with lp64d ABI (hard-float)
   # Zig's musl uses soft-float which is incompatible with Debian riscv64
   # See: https://github.com/ziglang/zig/issues/4863
-  # Note: Using -flto=auto for parallel LTO (GCC's default is single-threaded)
   exec "nim c -d:release --opt:speed --mm:orc " & "--cpu:riscv64 " &
     "--gcc.exe:riscv64-none-linux-musl-gcc " &
     "--gcc.linkerexe:riscv64-none-linux-musl-gcc " & "--passL:-static " &
@@ -196,6 +190,16 @@ task releaseMips64el, "Build static binary for MIPS64EL Linux":
     " -o:bin/yabb-linux-mips64el src/yabb.nim"
   echo "Built: bin/yabb-linux-mips64el"
 
+task releaseMipsel, "Build static binary for MIPS32 LE Linux (ALT Linux mipsel)":
+  # ALT Linux mipsel: MIPS32R2 baseline, o32 ABI, hard-float
+  # Common denominator for Baikal-T1 (P5600) and Loongson 3A
+  # See: https://www.altlinux.org/Ports/mipsel
+  exec "nim c " & releaseFlags & " " & zigccFlags & " " & "--cpu:mips " &
+    "--passC:'-target mipsel-linux-musleabihf' " &
+    "--passL:'-target mipsel-linux-musleabihf' " & "--passC:-mcpu=mips32r2 " & ltoFlags &
+    " -o:bin/yabb-linux-mipsel src/yabb.nim"
+  echo "Built: bin/yabb-linux-mipsel"
+
 task releaseAll, "Build static binaries for all Linux architectures":
   exec "nimble releaseAmd64"
   exec "nimble releaseArm64"
@@ -204,6 +208,7 @@ task releaseAll, "Build static binaries for all Linux architectures":
   exec "nimble releasePpc64le"
   exec "nimble releaseLoong64"
   exec "nimble releaseMips64el"
+  exec "nimble releaseMipsel"
   echo ""
   echo "All architectures built:"
   exec "ls -lh bin/yabb-linux-*"

@@ -160,6 +160,7 @@ release: && _clean-cache
         ppc64le) nimble releasePpc64le && cp bin/yabb-linux-ppc64le bin/yabb ;;
         loongarch64) nimble releaseLoong64 && cp bin/yabb-linux-loong64 bin/yabb ;;
         mips64el) nimble releaseMips64el && cp bin/yabb-linux-mips64el bin/yabb ;;
+        mipsel) nimble releaseMipsel && cp bin/yabb-linux-mipsel bin/yabb ;;
         *) echo "Unsupported architecture: $ARCH" && exit 1 ;;
     esac
     echo "Release build: bin/yabb (musl static, optimised, stripped)"
@@ -217,9 +218,14 @@ build-mips64el:
     @echo "Cross-compiling for MIPS64EL..."
     nimble releaseMips64el
 
+# Build for MIPS32 LE Linux (static musl, o32 ABI, hard-float - ALT Linux mipsel)
+build-mipsel:
+    @echo "Cross-compiling for MIPS32EL (ALT Linux mipsel)..."
+    nimble releaseMipsel
+
 # Release binaries for all Linux architectures
 # Note: armv5l is CI-only (Bootlin toolchain not available locally)
-release-all: build-amd64 build-arm64 build-armv7l build-riscv64 build-ppc64le build-loong64 build-mips64el
+release-all: build-amd64 build-arm64 build-armv7l build-riscv64 build-ppc64le build-loong64 build-mips64el build-mipsel
     @echo ""
     @echo "All architectures built (armv5l is CI-only):"
     @ls -lh bin/yabb-linux-* 2>/dev/null || echo "No binaries found"

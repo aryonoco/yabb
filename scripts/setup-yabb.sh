@@ -172,6 +172,7 @@ declare -rA ARCH_MAP=(
   [ppc64le]="ppc64le"
   [loongarch64]="loong64"
   [mips64el]="mips64el"
+  [mipsel]="mipsel"
 )
 
 #-------------------------------------------------------------------------------

@@ -220,10 +220,13 @@ I'm publishing this because it works for me, not because of how it was written.
 
 Copyright 2023-2026 Aryan Ameri. All rights reserved.
 
-This project uses two licenses:
+This project uses three licenses:
 
-- **Code** (all files except those in `/docs` and `*.md` and `*.txt` files):
+- **Application Code** (all files except those in `/.devcontainer`, `/.github`, `/docs` and `*.md` and `*.txt` files):
   [Mozilla Public License 2.0](LICENSE)
 
-- **Documentation** (contents of `/docs` directory and all `*.md` and `*.txt` files):
+ - **DevOps Code**  (all files in `/.devcontainer`, `/.github`):
+  [BSD Zero Clause License](LICENSE-DEVOPS)
+
+- **Documentation** (contents of `/docs` and all `*.md` and `*.txt` files):
   [Creative Commons Attribution 4.0 International](LICENSE-DOCS)

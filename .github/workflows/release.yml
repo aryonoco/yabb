@@ -1,9 +1,5 @@
-# SPDX-License-Identifier: MPL-2.0
+# SPDX-License-Identifier: 0BSD
 # Copyright (c) 2023-2026 Aryan Ameri
-#
-# This Source Code Form is subject to the terms of the Mozilla Public
-# License, v. 2.0. If a copy of the MPL was not distributed with this
-# file, You can obtain one at https://mozilla.org/MPL/2.0/.
 #
 # =============================================================================
 # YABB Release Workflow
@@ -135,6 +131,11 @@ jobs:
             target: mips64el-linux-muslabi64
             nimcpu: "--cpu:mips64"
             march: "-mcpu=mips64r2"
+            toolchain: zig
+          - arch: mipsel
+            target: mipsel-linux-musleabihf
+            nimcpu: "--cpu:mips"
+            march: "-mcpu=mips32r2"
             toolchain: zig
           - arch: armv5l
             nimcpu: "--cpu:arm"
