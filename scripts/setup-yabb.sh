@@ -14,7 +14,7 @@
 #
 # REQUIREMENTS:
 #   Bash 5.2+
-#   Linux (x86_64, aarch64, riscv64, ppc64le, armv7l, loongarch64, or mips64el)
+#   Linux (x86_64, aarch64, armv7l, armv5tel, armv5tejl, riscv64, ppc64le, loongarch64, mips64, mips)
 #   curl, tar, zstd, sha256sum, flock
 #
 # USAGE (please manually verify content first!):
@@ -168,11 +168,15 @@ declare -rA ARCH_MAP=(
   [aarch64]="arm64"
   [armv7l]="armv7l"
   [armv5l]="armv5l"
+  [armv5tel]="armv5l"        # Real ARMv5 hardware (Thumb, Enhanced DSP, LE)
+  [armv5tejl]="armv5l"       # Real ARMv5 hardware with Jazelle
   [riscv64]="riscv64"
   [ppc64le]="ppc64le"
   [loongarch64]="loong64"
   [mips64el]="mips64el"
+  [mips64]="mips64el"        # uname -m on little-endian MIPS64
   [mipsel]="mipsel"
+  [mips]="mipsel"            # uname -m on little-endian MIPS32
 )
 
 #-------------------------------------------------------------------------------
@@ -292,6 +296,41 @@ die() {
 
 has_command() {
   command -v "$1" &>/dev/null
+}
+
+#-------------------------------------------------------------------------------
+# Endianness Detection
+#-------------------------------------------------------------------------------
+get_system_endianness() {
+  # Method 1: Check /sys/kernel/cpu_byteorder (Linux 4.7+)
+  if [[ -r /sys/kernel/cpu_byteorder ]]; then
+    cat /sys/kernel/cpu_byteorder
+    return 0
+  fi
+
+  # Method 2: Use lscpu if available
+  # shellcheck disable=SC2310
+  if has_command lscpu; then
+    local byte_order
+    byte_order=$(lscpu 2>/dev/null | grep -i "byte order" | awk -F: '{print $2}' | tr -d ' ' | tr '[:upper:]' '[:lower:]')
+    if [[ ${byte_order} == *little* ]]; then
+      echo "little"
+      return 0
+    elif [[ ${byte_order} == *big* ]]; then
+      echo "big"
+      return 0
+    fi
+  fi
+
+  # Method 3: Use printf to check native byte order
+  # Create a 16-bit value and check byte order
+  local hex
+  hex=$(printf '\x01\x00' | od -An -tx2 | tr -d ' ')
+  if [[ ${hex} == "0001" ]]; then
+    echo "little"
+  else
+    echo "big"
+  fi
 }
 
 # Dry-run aware execution
@@ -785,6 +824,16 @@ detect_architecture() {
 
   local machine
   machine="$(uname -m)" || die "Failed to detect architecture" "${EXIT_GENERAL_ERROR}"
+
+  # Check for MIPS big-endian systems (uname reports same for BE and LE)
+  if [[ ${machine} == mips64 || ${machine} == mips ]]; then
+    local endianness
+    endianness=$(get_system_endianness)
+    if [[ ${endianness} == "big" ]]; then
+      die "Big-endian MIPS detected. YABB only provides little-endian (mipsel/mips64el) binaries." "${EXIT_UNSUPPORTED_ARCH}"
+    fi
+    log_debug "MIPS endianness: ${endianness}"
+  fi
 
   if [[ -v ARCH_MAP[${machine}] ]]; then
     ARCH="${ARCH_MAP[${machine}]}"
