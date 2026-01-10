@@ -41,9 +41,9 @@ alias jbr='just release'
 # Cross-compilation shortcuts (via just)
 alias jra='just release-all'
 alias jbarm='just build-arm64'
-alias jbarmv7='just build-armv7l'
+alias jbarmhf='just build-armhf'
 alias jbrv='just build-riscv64'
-alias jbppc='just build-ppc64le'
+alias jbppc='just build-ppc64el'
 alias jbloong='just build-loong64'
 
 # Test shortcuts (via just)
@@ -93,11 +93,11 @@ yabbhelp() {
   echo "  jbr         - just release (optimised static)"
   echo ""
   echo "Cross-compilation:"
-  echo "  jra         - just release-all (all 6 architectures)"
+  echo "  jra         - just release-all (all 8 architectures)"
   echo "  jbarm       - just build-arm64"
-  echo "  jbarmv7     - just build-armv7l"
+  echo "  jbarmhf     - just build-armhf"
   echo "  jbrv        - just build-riscv64"
-  echo "  jbppc       - just build-ppc64le"
+  echo "  jbppc       - just build-ppc64el"
   echo "  jbloong     - just build-loong64"
   echo ""
   echo "Test:"

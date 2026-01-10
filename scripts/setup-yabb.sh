@@ -15,6 +15,7 @@
 # REQUIREMENTS:
 #   Bash 5.2+
 #   Linux (x86_64, aarch64, armv7l, armv5tel, armv5tejl, riscv64, ppc64le, loongarch64, mips64, mips)
+#   Binary names follow Debian architecture naming: amd64, arm64, armhf, armel, riscv64, ppc64el, loong64, mips64el, mipsel
 #   curl, tar, zstd, sha256sum, flock
 #
 # USAGE (please manually verify content first!):
@@ -166,17 +167,17 @@ declare -ra REQUIRED_COMMANDS=(
 declare -rA ARCH_MAP=(
   [x86_64]="amd64"
   [aarch64]="arm64"
-  [armv7l]="armv7l"
-  [armv5l]="armv5l"
-  [armv5tel]="armv5l"        # Real ARMv5 hardware (Thumb, Enhanced DSP, LE)
-  [armv5tejl]="armv5l"       # Real ARMv5 hardware with Jazelle
+  [armv7l]="armhf"
+  [armv5l]="armel"
+  [armv5tel]="armel"  # Real ARMv5 hardware (Thumb, Enhanced DSP, LE)
+  [armv5tejl]="armel" # Real ARMv5 hardware with Jazelle
   [riscv64]="riscv64"
-  [ppc64le]="ppc64le"
+  [ppc64le]="ppc64el"
   [loongarch64]="loong64"
   [mips64el]="mips64el"
-  [mips64]="mips64el"        # uname -m on little-endian MIPS64
+  [mips64]="mips64el" # uname -m on little-endian MIPS64
   [mipsel]="mipsel"
-  [mips]="mipsel"            # uname -m on little-endian MIPS32
+  [mips]="mipsel" # uname -m on little-endian MIPS32
 )
 
 #-------------------------------------------------------------------------------

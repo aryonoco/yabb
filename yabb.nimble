@@ -3,7 +3,7 @@
 #
 # Package
 
-version = "0.4.26"
+version = "0.5.0"
 author = "Aryan Ameri"
 description = "Yet Another BTRFS Backup"
 license = "MPL 2.0"
@@ -122,15 +122,15 @@ task releaseArm64, "Build static binary for ARM64 Linux":
     " -o:bin/yabb-linux-arm64 src/yabb.nim"
   echo "Built: bin/yabb-linux-arm64"
 
-task releaseArmv7l, "Build static binary for ARMv7 Linux (armhf)":
+task releaseArmhf, "Build static binary for ARMv7 Linux (armhf)":
   # Debian armhf: ARMv7-A + VFPv3 + Thumb-2 + NEON, hard-float EABI
   # Note: Zig's musl includes NEON-optimised routines, so NEON is unavoidable
   exec "nim c " & releaseFlags & " " & zigccFlags & " " & "--cpu:arm " &
     "--passC:'-target arm-linux-musleabihf' " & "--passL:'-target arm-linux-musleabihf' " &
-    "--passC:-mcpu=baseline " & ltoFlags & " -o:bin/yabb-linux-armv7l src/yabb.nim"
-  echo "Built: bin/yabb-linux-armv7l"
+    "--passC:-mcpu=baseline " & ltoFlags & " -o:bin/yabb-linux-armhf src/yabb.nim"
+  echo "Built: bin/yabb-linux-armhf"
 
-task releaseArmv5l, "Build static binary for ARMv5 Linux (armel - CI only)":
+task releaseArmel, "Build static binary for ARMv5 Linux (armel - CI only)":
   # Debian armel: ARMv5T baseline, soft-float EABI
   # Uses Bootlin musl toolchain
   # CI-only, not available in devcontainer due to lack of arm64 host support)
@@ -143,9 +143,9 @@ task releaseArmv5l, "Build static binary for ARMv5 Linux (armel - CI only)":
     "--passC:-march=armv5t --passC:-mfloat-abi=soft --passC:-mabi=aapcs-linux " &
     "--passC:-ffunction-sections --passC:-fdata-sections " &
     "--passC:-flto=auto --passL:-flto=auto " & "--passL:-Wl,--gc-sections " &
-    "-o:bin/yabb-linux-armv5l src/yabb.nim"
-  exec "arm-buildroot-linux-musleabi-strip --strip-all bin/yabb-linux-armv5l"
-  echo "Built: bin/yabb-linux-armv5l"
+    "-o:bin/yabb-linux-armel src/yabb.nim"
+  exec "arm-buildroot-linux-musleabi-strip --strip-all bin/yabb-linux-armel"
+  echo "Built: bin/yabb-linux-armel"
 
 task releaseRiscv64, "Build static binary for RISC-V 64-bit Linux":
   # Uses RISCstar musl toolchain with lp64d ABI (hard-float)
@@ -161,13 +161,13 @@ task releaseRiscv64, "Build static binary for RISC-V 64-bit Linux":
   exec "riscv64-none-linux-musl-strip -s bin/yabb-linux-riscv64"
   echo "Built: bin/yabb-linux-riscv64"
 
-task releasePpc64le, "Build static binary for PowerPC 64-bit LE Linux":
+task releasePpc64el, "Build static binary for PowerPC 64-bit LE Linux":
   exec "nim c " & releaseFlags & " " & zigccFlags & " " & "--cpu:powerpc64 " &
     "--passC:'-target powerpc64le-linux-musl' " &
     "--passL:'-target powerpc64le-linux-musl' " &
     "--passC:-mcpu=pwr8 --passC:-mtune=pwr9 " & ltoFlags &
-    " -o:bin/yabb-linux-ppc64le src/yabb.nim"
-  echo "Built: bin/yabb-linux-ppc64le"
+    " -o:bin/yabb-linux-ppc64el src/yabb.nim"
+  echo "Built: bin/yabb-linux-ppc64el"
 
 task releaseLoong64, "Build static binary for LoongArch64 Linux":
   exec "nim c " & releaseFlags & " " & zigccFlags & " " & "--cpu:loongarch64 " &
@@ -199,9 +199,9 @@ task releaseMipsel, "Build static binary for MIPS32 LE Linux (ALT Linux mipsel)"
 task releaseAll, "Build static binaries for all Linux architectures":
   exec "nimble releaseAmd64"
   exec "nimble releaseArm64"
-  exec "nimble releaseArmv7l"
+  exec "nimble releaseArmhf"
   exec "nimble releaseRiscv64"
-  exec "nimble releasePpc64le"
+  exec "nimble releasePpc64el"
   exec "nimble releaseLoong64"
   exec "nimble releaseMips64el"
   exec "nimble releaseMipsel"
