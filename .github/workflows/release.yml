@@ -410,12 +410,15 @@ jobs:
           cp completions/yabb.fish "${ARCHIVE_NAME}/shell_completions/"
           cp completions/yabb.zsh "${ARCHIVE_NAME}/shell_completions/"
 
-          # Create scripts directory and copy scripts
+          # Create scripts directory and copy installer script
           mkdir -p "${ARCHIVE_NAME}/scripts"
           cp scripts/setup-yabb.sh "${ARCHIVE_NAME}/scripts/"
           chmod +x "${ARCHIVE_NAME}/scripts/setup-yabb.sh"
-          cp scripts/yabb.service "${ARCHIVE_NAME}/scripts/"
-          cp scripts/yabb.timer "${ARCHIVE_NAME}/scripts/"
+
+          # Copy systemd files to config directory
+          mkdir -p "${ARCHIVE_NAME}/config"
+          cp config/yabb.service "${ARCHIVE_NAME}/config/"
+          cp config/yabb.timer "${ARCHIVE_NAME}/config/"
 
           # Create symlink for setup-yabb.sh at root
           ln -s scripts/setup-yabb.sh "${ARCHIVE_NAME}/setup-yabb.sh"

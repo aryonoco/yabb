@@ -1,9 +1,5 @@
-# SPDX-License-Identifier: MPL-2.0
+# SPDX-License-Identifier: 0BSD
 # Copyright (c) 2023-2026 Aryan Ameri
-#
-# This Source Code Form is subject to the terms of the Mozilla Public
-# License, v. 2.0. If a copy of the MPL was not distributed with this
-# file, You can obtain one at https://mozilla.org/MPL/2.0/.
 #
 # =============================================================================
 # YABB - Yet Another BTRFS Backup
@@ -283,10 +279,14 @@ fmt-diff:
     @echo "Showing formatting diff..."
     nph --diff src/ tests/
 
-# Lint source files (Nim compile-time checks)
+# Lint source files (Nim compile-time checks + shell script formatting)
 lint:
     @echo "Running lint checks..."
     nim check src/yabb.nim
+    @echo "Checking shell scripts with shfmt (Google style)..."
+    shfmt -d -i 2 -ci -bn scripts/*.sh
+    @echo "Checking shell scripts with shellcheck (strict)..."
+    shellcheck -o all -S style scripts/*.sh
     @echo "Lint checks passed"
 
 # Run all code quality checks
@@ -297,15 +297,21 @@ check: fmt-check lint
 # CI PIPELINE
 # =============================================================================
 
-# Run full CI pipeline locally
-ci: fmt-check lint test
+# Check REUSE compliance (licensing)
+reuse:
+    @echo "Checking REUSE compliance..."
+    reuse lint
+    @echo "REUSE compliance check passed"
+
+# Run full CI pipeline locally (mirrors .github/workflows/ci.yml)
+ci: reuse fmt-check lint test
     @echo ""
     @echo "============================================"
     @echo "All CI checks passed!"
     @echo "============================================"
 
 # CI with verbose output
-ci-verbose: fmt-check lint test-verbose
+ci-verbose: reuse fmt-check lint test-verbose
     @echo ""
     @echo "============================================"
     @echo "All CI checks passed!"

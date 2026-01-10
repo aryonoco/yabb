@@ -16,12 +16,14 @@ ARG NIM_VERSION=2.2.6
 ARG NIMLANGSERVER_VERSION=1.12.0
 ARG ZIG_VERSION=0.15.2
 ARG RISCSTAR_VERSION=15.2-r1
+ARG UV_VERSION=0.9.24
 
 # Environment variables
 ENV NIM_VERSION=${NIM_VERSION}
 ENV ZIG_VERSION=${ZIG_VERSION}
 ENV RISCSTAR_VERSION=${RISCSTAR_VERSION}
-ENV PATH="/home/vscode/riscv64-toolchain/bin:/home/vscode/nim-${NIM_VERSION}/bin:/home/vscode/.nimble/bin:/home/vscode/zig:${PATH}"
+ENV UV_VERSION=${UV_VERSION}
+ENV PATH="/home/vscode/.local/bin:/home/vscode/riscv64-toolchain/bin:/home/vscode/nim-${NIM_VERSION}/bin:/home/vscode/.nimble/bin:/home/vscode/zig:${PATH}"
 ENV SHELL=/bin/zsh
 
 # Install system dependencies
@@ -54,8 +56,25 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     xz-utils \
     zstd \
     git \
+    # Shell script linting and formatting
+    shellcheck \
+    shfmt \
     # File watching (for just watch commands)
     entr \
+    # Python runtime (works with uv for package management)
+    python3 \
+    python3-venv \
+    # JSON processing
+    jq \
+    # Modern CLI utilities (Claude Code benefits from these)
+    ripgrep \
+    fd-find \
+    tree \
+    htop \
+    ncdu \
+    tmux \
+    bat \
+    fzf \
     # Clean up
     && apt-get clean \
     && rm -rf /var/lib/apt/lists/* \
@@ -133,9 +152,14 @@ RUN ln -s ~/nim-${NIM_VERSION} ~/nim
 # Install zigcc (Nim wrapper for zig cc)
 RUN $HOME/nim-${NIM_VERSION}/bin/nimble install -y zigcc
 
+# Install uv (Python package manager)
+RUN echo "Installing uv ${UV_VERSION}..." \
+    && curl -LsSf "https://astral.sh/uv/${UV_VERSION}/install.sh" | sh \
+    && echo "uv ${UV_VERSION} installed successfully"
+
 # Verify installation
 RUN nim --version && nimble --version && zig version && zigcc --version \
-    && riscv64-none-linux-musl-gcc --version
+    && riscv64-none-linux-musl-gcc --version && uv --version
 
 # Reset to root for devcontainer features
 USER root

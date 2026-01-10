@@ -60,6 +60,7 @@ alias jc='just check'
 
 # CI shortcuts (via just)
 alias jci='just ci'
+alias jreuse='just reuse'
 
 # Development shortcuts (via just)
 alias jr='just run'
@@ -108,6 +109,7 @@ yabbhelp() {
   echo "  jf          - just fmt (format with nph)"
   echo "  jfc         - just fmt-check (CI-friendly)"
   echo "  jc          - just check (fmt-check + lint)"
+  echo "  jreuse      - just reuse (REUSE compliance)"
   echo "  jci         - just ci (full pipeline)"
   echo ""
   echo "Development:"
@@ -122,6 +124,23 @@ yabbhelp() {
   echo "Run 'just --list' for all available commands"
 }
 EOF
+
+# uv shell completions (zsh)
+echo 'eval "$(uv generate-shell-completion zsh)"' >> ~/.zshrc
+echo 'eval "$(uvx --generate-shell-completion zsh)"' >> ~/.zshrc
+
+# Aliases for Debian package naming quirks
+echo "alias fd='fdfind'" >> ~/.zshrc
+echo "alias bat='batcat'" >> ~/.zshrc
+
+# fzf key bindings and completion (zsh)
+echo 'source /usr/share/doc/fzf/examples/key-bindings.zsh' >> ~/.zshrc
+echo 'source /usr/share/doc/fzf/examples/completion.zsh' >> ~/.zshrc
+
+# Install Python tools via uv
+echo ""
+echo "Installing Python tools via uv..."
+uv tool install reuse
 
 # Run setup via just (installs tools + dependencies)
 echo ""
@@ -176,14 +195,31 @@ if [ -f versions.env ]; then
     MISMATCH=1
   fi
 
+  # Validate uv
+  INSTALLED_UV=$(uv --version 2>/dev/null | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' || echo "unknown")
+  echo "Checking uv: expected=$UV_VERSION, installed=$INSTALLED_UV"
+  if [ "$UV_VERSION" != "$INSTALLED_UV" ]; then
+    echo "  WARNING: uv version mismatch!"
+    MISMATCH=1
+  fi
+
+  # Validate reuse (installed via uv tool)
+  if command -v reuse &> /dev/null; then
+    INSTALLED_REUSE=$(reuse --version 2>/dev/null | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' || echo "unknown")
+    echo "Checking reuse: installed ($INSTALLED_REUSE)"
+  else
+    echo "  WARNING: reuse not found! Run 'uv tool install reuse'"
+    MISMATCH=1
+  fi
+
   if [ "$MISMATCH" -eq 1 ]; then
     echo ""
     echo "========================================"
     echo "WARNING: Version mismatch detected!"
     echo "========================================"
     echo "To fix: Update .devcontainer/devcontainer.json"
-    echo "  - build.args (NIM_VERSION, ZIG_VERSION)"
-    echo "  - containerEnv (NIM_VERSION, ZIG_VERSION)"
+    echo "  - build.args (NIM_VERSION, ZIG_VERSION, UV_VERSION)"
+    echo "  - containerEnv (NIM_VERSION, ZIG_VERSION, UV_VERSION)"
     echo "Then rebuild the container."
     echo "========================================"
   else

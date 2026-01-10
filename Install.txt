@@ -267,8 +267,8 @@ ALREADY installed to /etc/systemd/system/. Just enable the timer:
 
 If you installed from tarball (Option B/C), copy the service files first:
 
-   sudo cp yabb-*/scripts/yabb.service /etc/systemd/system/
-   sudo cp yabb-*/scripts/yabb.timer /etc/systemd/system/
+   sudo cp yabb-*/config/yabb.service /etc/systemd/system/
+   sudo cp yabb-*/config/yabb.timer /etc/systemd/system/
    sudo systemctl daemon-reload
    sudo systemctl enable --now yabb.timer
 

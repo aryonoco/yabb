@@ -7,7 +7,8 @@
       "NPH_VERSION": "0.6.2",
       "NIMLANGSERVER_VERSION": "1.12.0",
       "ZIG_VERSION": "0.15.2",
-      "RISCSTAR_VERSION": "15.2-r1"
+      "RISCSTAR_VERSION": "15.2-r1",
+      "UV_VERSION": "0.9.24"
     }
   },
   "workspaceFolder": "/workspaces/yabb",
@@ -67,6 +68,7 @@
     "NIMLANGSERVER_VERSION": "1.12.0",
     "ZIG_VERSION": "0.15.2",
     "RISCSTAR_VERSION": "15.2-r1",
+    "UV_VERSION": "0.9.24",
     "EDITOR": "code --wait",
     "VISUAL": "code --wait"
   },
@@ -102,7 +104,10 @@
         "timonwong.shellcheck",
         "foxundermoon.shell-format",
 
-        "redhat.vscode-yaml"
+        "redhat.vscode-yaml",
+
+        "ms-python.python",
+        "charliermarsh.ruff"
       ],
       "settings": {
         "nim.provider": "lsp",

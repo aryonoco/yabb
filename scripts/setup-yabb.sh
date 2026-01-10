@@ -271,7 +271,7 @@ _syslog() {
   if [[ ${SYSLOG} == true ]]; then
     # shellcheck disable=SC2310
     if has_command logger; then
-      logger -t "${SCRIPT_NAME}" -p "user.${level,,}" "${msg}" 2> /dev/null || true
+      logger -t "${SCRIPT_NAME}" -p "user.${level,,}" "${msg}" 2>/dev/null || true
     fi
   fi
 }
@@ -291,7 +291,7 @@ die() {
 }
 
 has_command() {
-  command -v "$1" &> /dev/null
+  command -v "$1" &>/dev/null
 }
 
 # Dry-run aware execution
@@ -384,7 +384,7 @@ atomic_write() {
 
   temp=$(mktemp "${target}.tmp.XXXXXX") || die "Failed to create temp file for ${target}" "${EXIT_GENERAL_ERROR}"
   trap 'rm -f "${temp}" 2>/dev/null; trap - RETURN' RETURN
-  printf '%s\n' "${content}" > "${temp}"
+  printf '%s\n' "${content}" >"${temp}"
   mv -f "${temp}" "${target}"
 
   # Clear trap and register for rollback
@@ -399,7 +399,7 @@ backup_file() {
   local -r file="$1"
   if [[ -f ${file} ]]; then
     local -r backup="${file}.bak.${SRANDOM}"
-    cp -a "${file}" "${backup}" 2> /dev/null || true
+    cp -a "${file}" "${backup}" 2>/dev/null || true
     register_modified_file "${file}" "${backup}"
     echo "${backup}"
   fi
@@ -418,7 +418,7 @@ acquire_lock() {
     mkdir -p "${lock_dir}" || die "Cannot create lock directory: ${lock_dir}" "${EXIT_LOCK_FAILED}"
   fi
 
-  exec {LOCK_FD}> "${LOCK_FILE}" || die "Cannot open lock file: ${LOCK_FILE}" "${EXIT_LOCK_FAILED}"
+  exec {LOCK_FD}>"${LOCK_FILE}" || die "Cannot open lock file: ${LOCK_FILE}" "${EXIT_LOCK_FAILED}"
 
   if ! flock -w "${LOCK_TIMEOUT}" "${LOCK_FD}"; then
     die "Could not acquire lock within ${LOCK_TIMEOUT}s. Another instance may be running." "${EXIT_LOCK_FAILED}"
@@ -433,7 +433,7 @@ acquire_lock() {
 
 release_lock() {
   if [[ -n ${LOCK_FD} ]]; then
-    exec {LOCK_FD}>&- 2> /dev/null || true
+    exec {LOCK_FD}>&- 2>/dev/null || true
     log_debug "Lock released"
   fi
 }
@@ -464,16 +464,16 @@ register_modified_file() {
 #-------------------------------------------------------------------------------
 cleanup_processes() {
   local -a child_pids
-  mapfile -t child_pids < <(pgrep -P $$ 2> /dev/null || true)
+  mapfile -t child_pids < <(pgrep -P $$ 2>/dev/null || true)
 
   if ((${#child_pids[@]} > 0)); then
     log_debug "Terminating ${#child_pids[@]} child process(es)"
     for pid in "${child_pids[@]}"; do
-      kill -TERM "${pid}" 2> /dev/null || true
+      kill -TERM "${pid}" 2>/dev/null || true
     done
     sleep 0.5
     for pid in "${child_pids[@]}"; do
-      kill -KILL "${pid}" 2> /dev/null || true
+      kill -KILL "${pid}" 2>/dev/null || true
     done
   fi
 }
@@ -517,8 +517,8 @@ cleanup() {
   for ((i = ${#CLEANUP_ACTIONS[@]} - 1; i >= 0; i--)); do
     local action="${CLEANUP_ACTIONS[i]}"
     log_debug "Executing cleanup action: ${action}"
-    if declare -F "${action}" &> /dev/null; then
-      "${action}" 2> /dev/null || true
+    if declare -F "${action}" &>/dev/null; then
+      "${action}" 2>/dev/null || true
     fi
   done
 
@@ -529,7 +529,7 @@ cleanup() {
     for file in "${!CREATED_FILES[@]}"; do
       if [[ -f ${file} || -d ${file} ]]; then
         log_debug "Removing created: ${file}"
-        rm -rf "${file}" 2> /dev/null || true
+        rm -rf "${file}" 2>/dev/null || true
       fi
     done
 
@@ -538,7 +538,7 @@ cleanup() {
       local backup="${MODIFIED_FILES[${file}]}"
       if [[ -f ${backup} ]]; then
         log_debug "Restoring ${file} from ${backup}"
-        mv -f "${backup}" "${file}" 2> /dev/null || true
+        mv -f "${backup}" "${file}" 2>/dev/null || true
       fi
     done
 
@@ -548,7 +548,7 @@ cleanup() {
     # Success: remove backup files
     for file in "${!MODIFIED_FILES[@]}"; do
       local backup="${MODIFIED_FILES[${file}]}"
-      rm -f "${backup}" 2> /dev/null || true
+      rm -f "${backup}" 2>/dev/null || true
     done
   fi
 
@@ -572,15 +572,15 @@ rollback_atomic_installation() {
   # Clean partial staging
   if [[ -d ${staging} ]]; then
     log_debug "Removing partial staging directory"
-    rm -rf "${staging}" 2> /dev/null || true
+    rm -rf "${staging}" 2>/dev/null || true
   fi
 
   # Restore from rollback if available
   if [[ -d ${rollback} ]]; then
     if [[ ! -d ${INSTALL_DIR} ]] || [[ ! -x ${INSTALL_DIR}/yabb ]]; then
       log_info "Restoring previous installation from rollback"
-      rm -rf "${INSTALL_DIR}" 2> /dev/null || true
-      if mv "${rollback}" "${INSTALL_DIR}" 2> /dev/null; then
+      rm -rf "${INSTALL_DIR}" 2>/dev/null || true
+      if mv "${rollback}" "${INSTALL_DIR}" 2>/dev/null; then
         log_success "Previous installation restored"
       else
         log_error "Rollback failed - manual intervention may be required"
@@ -622,7 +622,7 @@ signal_handler() {
   RECEIVED_SIGNAL="${sig_name}"
 
   if [[ -v SIGNAL_INFO[${sig_name}] ]]; then
-    IFS=':' read -r sig_num sig_desc sig_type <<< "${SIGNAL_INFO[${sig_name}]}"
+    IFS=':' read -r sig_num sig_desc sig_type <<<"${SIGNAL_INFO[${sig_name}]}"
   fi
 
   local -ri exit_code=$((128 + sig_num))
@@ -696,7 +696,7 @@ setup_signal_handlers() {
   trap 'signal_handler BUS' BUS
   trap 'signal_handler FPE' FPE
   trap 'signal_handler SEGV' SEGV
-  trap 'signal_handler SYS' SYS 2> /dev/null || true
+  trap 'signal_handler SYS' SYS 2>/dev/null || true
 
   log_debug "Signal handlers installed"
 }
@@ -733,7 +733,7 @@ mark_step_complete() {
   local -r step_name="$1"
   if [[ ${DRY_RUN} != true ]]; then
     mkdir -p "${STEP_MARKER_DIR}"
-    printf '%s\n' "$(printf '%(%FT%T)T' "${EPOCHSECONDS}")" > "${STEP_MARKER_DIR}/.step_${step_name}"
+    printf '%s\n' "$(printf '%(%FT%T)T' "${EPOCHSECONDS}")" >"${STEP_MARKER_DIR}/.step_${step_name}"
   fi
   log_debug "Step '${step_name}' marked complete"
 }
@@ -741,7 +741,7 @@ mark_step_complete() {
 # Clear all step markers (for fresh install with --force)
 clear_step_markers() {
   if [[ -d ${STEP_MARKER_DIR} ]]; then
-    rm -f "${STEP_MARKER_DIR}"/.step_* 2> /dev/null || true
+    rm -f "${STEP_MARKER_DIR}"/.step_* 2>/dev/null || true
     log_debug "Step markers cleared"
   fi
 }
@@ -813,7 +813,7 @@ check_network() {
       --connect-timeout 5 \
       --max-time 10 \
       -o /dev/null \
-      "${endpoint}" 2> /dev/null; then
+      "${endpoint}" 2>/dev/null; then
       log_success "Network connectivity confirmed"
       return 0
     fi
@@ -828,7 +828,7 @@ check_network() {
 check_dns() {
   log_info "Checking DNS resolution..."
 
-  if ! getent hosts github.com &> /dev/null; then
+  if ! getent hosts github.com &>/dev/null; then
     die "DNS resolution failed for github.com. Check your DNS settings." "${EXIT_NETWORK_ERROR}"
   fi
 
@@ -842,7 +842,7 @@ check_disk_space() {
   log_info "Checking available disk space..."
 
   local -i available_mb
-  available_mb=$(df -BM /opt 2> /dev/null | awk 'NR==2 {print int($4)}') || available_mb=0
+  available_mb=$(df -BM /opt 2>/dev/null | awk 'NR==2 {print int($4)}') || available_mb=0
 
   if ((available_mb < REQUIRED_DISK_SPACE_MB)); then
     die "Insufficient disk space: ${available_mb}MB available, ${REQUIRED_DISK_SPACE_MB}MB required" "${EXIT_DISK_SPACE}"
@@ -858,7 +858,7 @@ check_file_descriptors() {
   log_info "Checking file descriptor limits..."
   local -ri required_fds=256
   local -i max_fds
-  max_fds=$(ulimit -n 2> /dev/null) || max_fds=0
+  max_fds=$(ulimit -n 2>/dev/null) || max_fds=0
 
   if ((max_fds > 0 && max_fds < required_fds)); then
     log_warn "Low file descriptor limit: ${max_fds} (recommended: ${required_fds}+)"
@@ -885,7 +885,7 @@ validate_path_safe() {
 
   # Resolve and verify - realpath -m doesn't require path to exist
   local resolved
-  if ! resolved=$(realpath -m "${path}" 2> /dev/null); then
+  if ! resolved=$(realpath -m "${path}" 2>/dev/null); then
     die "Invalid path: ${path}" "${EXIT_INVALID_ARGS}"
   fi
 
@@ -1018,7 +1018,7 @@ get_installed_version() {
 
   # Try to get version
   local output
-  if output=$("${binary}" --version 2> /dev/null); then
+  if output=$("${binary}" --version 2>/dev/null); then
     local version
     version=$(echo "${output}" | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' | head -1)
     if [[ -n ${version} ]]; then
@@ -1207,7 +1207,7 @@ verify_staging_contents() {
     die "Staging verification failed: yabb binary not executable" "${EXIT_INSTALL_FAILED}"
   fi
 
-  if ! file "${staging}/yabb" 2> /dev/null | grep -q 'ELF'; then
+  if ! file "${staging}/yabb" 2>/dev/null | grep -q 'ELF'; then
     die "Staging verification failed: yabb is not a valid ELF binary" "${EXIT_INSTALL_FAILED}"
   fi
 
@@ -1263,7 +1263,7 @@ atomic_swap_installation() {
   fi
 
   # Ensure no stale rollback
-  rm -rf "${rollback}" 2> /dev/null || true
+  rm -rf "${rollback}" 2>/dev/null || true
 
   # CRITICAL SECTION START
 
@@ -1391,7 +1391,7 @@ install_systemd_files() {
     return 0
   fi
 
-  local -r src_dir="${INSTALL_DIR}/scripts"
+  local -r src_dir="${INSTALL_DIR}/config"
   local -i installed=0
 
   for sfile in "${SYSTEMD_FILES[@]}"; do
@@ -1407,7 +1407,7 @@ install_systemd_files() {
   if ((installed > 0)) && [[ ${DRY_RUN} != true ]]; then
     # shellcheck disable=SC2310
     if has_command systemctl; then
-      systemctl daemon-reload 2> /dev/null || log_warn "Failed to reload systemd"
+      systemctl daemon-reload 2>/dev/null || log_warn "Failed to reload systemd"
     fi
   fi
 
@@ -1456,7 +1456,7 @@ verify_installation() {
   # Binary exists and executable
   if [[ -x ${INSTALL_DIR}/yabb ]]; then
     local ver
-    ver=$("${INSTALL_DIR}/yabb" --version 2> /dev/null) || ver="unknown"
+    ver=$("${INSTALL_DIR}/yabb" --version 2>/dev/null) || ver="unknown"
     log_success "Binary: ${INSTALL_DIR}/yabb (${ver})"
   else
     log_error "Binary not found or not executable"
@@ -1504,19 +1504,19 @@ health_check() {
   local -ri max_score=4
 
   # Check binary responds
-  if "${INSTALL_DIR}/yabb" --help &> /dev/null; then
+  if "${INSTALL_DIR}/yabb" --help &>/dev/null; then
     log_debug "Health: Binary responds to --help"
     ((++score))
   fi
 
   # Check version output
-  if "${INSTALL_DIR}/yabb" --version &> /dev/null; then
+  if "${INSTALL_DIR}/yabb" --version &>/dev/null; then
     log_debug "Health: Version command works"
     ((++score))
   fi
 
   # Check validate command exists
-  if "${INSTALL_DIR}/yabb" validate --help &> /dev/null 2>&1; then
+  if "${INSTALL_DIR}/yabb" validate --help &>/dev/null 2>&1; then
     log_debug "Health: Validate command available"
     ((++score))
   fi
@@ -1629,7 +1629,7 @@ print_summary() {
 # Show Help
 #-------------------------------------------------------------------------------
 show_help() {
-  cat << EOF
+  cat <<EOF
 ${SCRIPT_NAME} v${SCRIPT_VERSION} - YABB Enterprise Installer
 
 USAGE:
@@ -1740,11 +1740,11 @@ run_removal() {
     for sfile in "${SYSTEMD_FILES[@]}"; do
       local unit="${sfile%.service}"
       unit="${unit%.timer}"
-      if systemctl is-active --quiet "${sfile}" 2> /dev/null; then
+      if systemctl is-active --quiet "${sfile}" 2>/dev/null; then
         execute systemctl stop "${sfile}" || true
         log_info "Stopped: ${sfile}"
       fi
-      if systemctl is-enabled --quiet "${sfile}" 2> /dev/null; then
+      if systemctl is-enabled --quiet "${sfile}" 2>/dev/null; then
         execute systemctl disable "${sfile}" || true
         log_info "Disabled: ${sfile}"
       fi
@@ -1791,7 +1791,7 @@ run_removal() {
 
   # shellcheck disable=SC2310
   if has_command systemctl && [[ ${DRY_RUN} != true ]]; then
-    systemctl daemon-reload 2> /dev/null || true
+    systemctl daemon-reload 2>/dev/null || true
   fi
 
   # Step 5: Remove config files if --purge
@@ -1983,7 +1983,7 @@ parse_arguments() {
 main() {
   # Initialize log file
   mkdir -p "${LOG_FILE%/*}"
-  : > "${LOG_FILE}"
+  : >"${LOG_FILE}"
   chmod 644 "${LOG_FILE}"
 
   log_info "==============================================================="

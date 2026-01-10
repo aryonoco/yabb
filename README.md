@@ -2,6 +2,7 @@
 
 Yet Another BTRFS Backup. Incremental snapshots with retention policies.
 
+[![REUSE](https://api.reuse.software/badge/github.com/aryonoco/yabb)](https://api.reuse.software/info/github.com/aryonoco/yabb)
 ![License](https://img.shields.io/badge/license-MPL--2.0-blue)
 ![Nim](https://img.shields.io/badge/nim-2.2%2B-yellow)
 ![Platform](https://img.shields.io/badge/platform-Linux-lightgrey)
@@ -218,15 +219,12 @@ I'm publishing this because it works for me, not because of how it was written.
 
 ## License
 
-Copyright 2023-2026 Aryan Ameri. All rights reserved.
+Copyright 2023-2026 Aryan Ameri.
 
-This project uses three licenses:
+| Content | License |
+|---------|---------|
+| Source code | [MPL-2.0](LICENSES/MPL-2.0.txt) |
+| Config/plumbing | [0BSD](LICENSES/0BSD.txt) |
+| Documentation | [CC-BY-4.0](LICENSES/CC-BY-4.0.txt) |
 
-- **Application Code** (all files except those in `/.devcontainer`, `/.github`, `/docs` and `*.md` and `*.txt` files):
-  [Mozilla Public License 2.0](LICENSE)
-
- - **DevOps Code**  (all files in `/.devcontainer`, `/.github`):
-  [BSD Zero Clause License](LICENSE-DEVOPS)
-
-- **Documentation** (contents of `/docs` and all `*.md` and `*.txt` files):
-  [Creative Commons Attribution 4.0 International](LICENSE-DOCS)
+This project is [REUSE](https://reuse.software/) compliant. See [REUSE.toml](REUSE.toml) for details.

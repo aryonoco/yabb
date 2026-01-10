@@ -1,6 +1,7 @@
+# SPDX-License-Identifier: 0BSD
+# Copyright (c) 2023-2026 Aryan Ameri
 # =============================================================================
-# YABB - Yet Another BTRFS Backup
-# Comprehensive .gitignore following project standards
+# YABB .gitignore
 # =============================================================================
 
 # -----------------------------------------------------------------------------
