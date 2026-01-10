@@ -318,6 +318,54 @@ ci-verbose: reuse fmt-check lint test-verbose
     @echo "============================================"
 
 # =============================================================================
+# RELEASE
+# =============================================================================
+
+# Create a release: update version, run CI, commit, push, tag, and push tag
+tag VERSION MESSAGE="":
+    #!/usr/bin/env bash
+    set -euo pipefail
+
+    # Validate version format
+    if [[ ! "{{VERSION}}" =~ ^v[0-9]+\.[0-9]+\.[0-9]+(-.*)?$ ]]; then
+        echo "ERROR: Version must match vX.Y.Z or vX.Y.Z-suffix (e.g., v0.5.0, v1.0.0-rc1)"
+        exit 1
+    fi
+
+    # Extract version without 'v' prefix
+    SEMVER="{{VERSION}}"
+    SEMVER="${SEMVER#v}"
+    echo "Updating version to $SEMVER..."
+
+    # Update version in yabb.nimble
+    sed -i "s/^version = \".*\"/version = \"$SEMVER\"/" yabb.nimble
+    echo "Updated yabb.nimble"
+
+    # Run CI first
+    echo "Running CI checks..."
+    just ci
+
+    # Commit changes
+    MSG="${MESSAGE:-Release {{VERSION}}}"
+    echo "Committing changes..."
+    git add .
+    git commit -m "$MSG"
+    echo "Pushing to remote..."
+    git push
+
+    # Create and push tag
+    echo "Creating tag {{VERSION}}..."
+    git tag -a "{{VERSION}}" -m "Release {{VERSION}}"
+    echo "Pushing tag to remote..."
+    git push origin "{{VERSION}}"
+
+    echo ""
+    echo "============================================"
+    echo "Release {{VERSION}} complete!"
+    echo "GitHub Actions will now build and publish."
+    echo "============================================"
+
+# =============================================================================
 # DOCUMENTATION
 # =============================================================================
 
