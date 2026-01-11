@@ -104,10 +104,20 @@ jobs:
             nimcpu: ""
             march: "-march=x86_64 -mno-avx -mno-avx2"
             toolchain: zig
+          - arch: amd64_v4
+            target: x86_64-linux-musl
+            nimcpu: ""
+            march: "-march=x86-64-v4 -mtune=znver4"
+            toolchain: zig
           - arch: arm64
             target: aarch64-linux-musl
             nimcpu: "--cpu:arm64"
             march: "-march=armv8-a -mtune=cortex_a72"
+            toolchain: zig
+          - arch: arm64v9
+            target: aarch64-linux-musl
+            nimcpu: "--cpu:arm64"
+            march: "-march=armv9-a+sve2 -mtune=neoverse_n2"
             toolchain: zig
           - arch: armhf
             target: arm-linux-musleabihf
@@ -136,6 +146,16 @@ jobs:
             target: mipsel-linux-musleabihf
             nimcpu: "--cpu:mips"
             march: "-mcpu=mips32r2"
+            toolchain: zig
+          - arch: i686
+            target: x86-linux-musl
+            nimcpu: "--cpu:i386"
+            march: "-mcpu=pentium4"
+            toolchain: zig
+          - arch: i586
+            target: x86-linux-musl
+            nimcpu: "--cpu:i386"
+            march: "-mcpu=i586"
             toolchain: zig
           - arch: armel
             nimcpu: "--cpu:arm"

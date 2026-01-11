@@ -7,8 +7,8 @@ Installation Guide
 REQUIREMENTS
 ------------
 - Linux with BTRFS filesystems (source and destination must both be BTRFS)
-- Supported architectures (uname -m): x86_64, aarch64, armv7l, armv5l, riscv64, ppc64le, loongarch64, mips64, mips
-- Binary names (Debian dpkg naming): amd64, arm64, armhf, armel, riscv64, ppc64el, loong64, mips64el, mipsel
+- Supported architectures (uname -m): x86_64, i686, i586, i486, i386, aarch64, armv7l, armv5l, riscv64, ppc64le, loongarch64, mips64, mips
+- Binary names (Debian dpkg naming): amd64, amd64_v4, i686, i586, arm64, arm64v9, armhf, armel, riscv64, ppc64el, loong64, mips64el, mipsel
 - Root access (sudo) for backup operations
 - Bash 5.2 or newer (for automatic installer)
 - btrfs-progs 5.14 or newer

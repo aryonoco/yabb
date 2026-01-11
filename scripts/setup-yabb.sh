@@ -178,6 +178,11 @@ declare -rA ARCH_MAP=(
   [mips64]="mips64el" # uname -m on little-endian MIPS64
   [mipsel]="mipsel"
   [mips]="mipsel" # uname -m on little-endian MIPS32
+  # 32-bit x86 - will be refined by detect_x86_binary()
+  [i686]="x86_32"
+  [i586]="x86_32"
+  [i486]="x86_32"
+  [i386]="x86_32"
 )
 
 #-------------------------------------------------------------------------------
@@ -331,6 +336,59 @@ get_system_endianness() {
     echo "little"
   else
     echo "big"
+  fi
+}
+
+#-------------------------------------------------------------------------------
+# x86 CPU Feature Detection
+#-------------------------------------------------------------------------------
+detect_x86_binary() {
+  # Check for SSE2 support in /proc/cpuinfo flags
+  # SSE2 is the deciding factor between i686 (pentium4) and i586 binaries
+  # i686 binary: Pentium 4 baseline with SSE2, MMX, cmov
+  # i586 binary: Original Pentium baseline, no SSE, no cmov
+  if grep -qE "^flags[[:space:]]*:.*\bsse2\b" /proc/cpuinfo 2>/dev/null; then
+    echo "i686"
+  else
+    echo "i586"
+  fi
+}
+
+#-------------------------------------------------------------------------------
+# x86_64 CPU Feature Detection (AVX-512 for v4)
+#-------------------------------------------------------------------------------
+detect_amd64_binary() {
+  # Check for x86-64-v4 support (AVX-512 foundation extensions)
+  # x86-64-v4 requires: AVX512F, AVX512BW, AVX512CD, AVX512DQ, AVX512VL
+  # amd64_v4 binary: Zen4/Ice Lake+ optimised with AVX-512
+  # amd64 binary: Baseline x86_64 (maximum compatibility)
+  local flags
+  flags=$(grep -m1 "^flags" /proc/cpuinfo 2>/dev/null || echo "")
+  if [[ ${flags} == *avx512f* ]] \
+    && [[ ${flags} == *avx512bw* ]] \
+    && [[ ${flags} == *avx512cd* ]] \
+    && [[ ${flags} == *avx512dq* ]] \
+    && [[ ${flags} == *avx512vl* ]]; then
+    echo "amd64_v4"
+  else
+    echo "amd64"
+  fi
+}
+
+#-------------------------------------------------------------------------------
+# ARM64 CPU Feature Detection (SVE2 for v9)
+#-------------------------------------------------------------------------------
+detect_arm64_binary() {
+  # Check for ARMv9 support (SVE2 is the key indicator)
+  # ARMv9 requires: SVE2 (Scalable Vector Extension 2)
+  # arm64v9 binary: Neoverse N2/Graviton 3+ optimised with SVE2
+  # arm64 binary: Baseline ARMv8-A (maximum compatibility)
+  local features
+  features=$(grep -m1 "^Features" /proc/cpuinfo 2>/dev/null || echo "")
+  if [[ ${features} == *sve2* ]]; then
+    echo "arm64v9"
+  else
+    echo "arm64"
   fi
 }
 
@@ -826,6 +884,32 @@ detect_architecture() {
   local machine
   machine="$(uname -m)" || die "Failed to detect architecture" "${EXIT_GENERAL_ERROR}"
 
+  # Handle x86 specially - check CPU features to select optimal binary
+  case "${machine}" in
+    x86_64)
+      ARCH=$(detect_amd64_binary)
+      local feature_msg
+      feature_msg=$([[ ${ARCH} == "amd64_v4" ]] && echo "AVX-512 detected" || echo "baseline")
+      log_success "Architecture: ${machine} -> ${ARCH} (${feature_msg})"
+      return 0
+      ;;
+    aarch64)
+      ARCH=$(detect_arm64_binary)
+      local feature_msg
+      feature_msg=$([[ ${ARCH} == "arm64v9" ]] && echo "SVE2 detected" || echo "baseline")
+      log_success "Architecture: ${machine} -> ${ARCH} (${feature_msg})"
+      return 0
+      ;;
+    i?86)
+      ARCH=$(detect_x86_binary)
+      local feature_msg
+      feature_msg=$([[ ${ARCH} == "i686" ]] && echo "SSE2 detected" || echo "legacy/no SSE2")
+      log_success "Architecture: ${machine} -> ${ARCH} (${feature_msg})"
+      return 0
+      ;;
+    *) ;;
+  esac
+
   # Check for MIPS big-endian systems (uname reports same for BE and LE)
   if [[ ${machine} == mips64 || ${machine} == mips ]]; then
     local endianness
@@ -838,6 +922,14 @@ detect_architecture() {
 
   if [[ -v ARCH_MAP[${machine}] ]]; then
     ARCH="${ARCH_MAP[${machine}]}"
+    # Handle x86_32 placeholder (shouldn't reach here due to case above, but safety)
+    if [[ ${ARCH} == "x86_32" ]]; then
+      ARCH=$(detect_x86_binary)
+      local feature_msg
+      feature_msg=$([[ ${ARCH} == "i686" ]] && echo "SSE2 detected" || echo "legacy/no SSE2")
+      log_success "Architecture: ${machine} -> ${ARCH} (${feature_msg})"
+      return 0
+    fi
     log_success "Architecture: ${machine} -> ${ARCH}"
   else
     die "Unsupported architecture: ${machine}. Supported: ${!ARCH_MAP[*]}" "${EXIT_UNSUPPORTED_ARCH}"

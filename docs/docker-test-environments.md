@@ -8,7 +8,11 @@ Docker images used to verify binary compatibility for each supported architectur
 | Binary | Docker Image | OS | `uname -m` | `dpkg --print-architecture` |
 |--------|--------------|----|-----------:|----------------------------:|
 | `amd64` | `debian:trixie` | Debian 13 (trixie) | `x86_64` | `amd64` |
+| `amd64_v4` | `debian:trixie` | Debian 13 (trixie) | `x86_64` | `amd64` |
+| `i686` | `i386/debian:trixie` | Debian 13 (trixie) | `x86_64`** | `i386` |
+| `i586` | `i386/debian:bookworm` | Debian 12 (bookworm) | `x86_64`** | `i386` |
 | `arm64` | `arm64v8/debian:trixie` | Debian 13 (trixie) | `aarch64` | `arm64` |
+| `arm64v9` | `arm64v8/debian:trixie` | Debian 13 (trixie) | `aarch64` | `arm64` |
 | `armhf` | `arm32v7/debian:trixie` | Debian 13 (trixie) | `armv7l` | `armhf` |
 | `armel` | `arm32v5/debian:latest` | Debian 13 (trixie) | `armv7l`* | `armel` |
 | `riscv64` | `riscv64/debian:trixie` | Debian 13 (trixie) | `riscv64` | `riscv64` |
@@ -18,3 +22,5 @@ Docker images used to verify binary compatibility for each supported architectur
 | `mipsel` | `aoqi/debian-mipsel:latest` | Debian 9 (stretch) | `mips` | `mipsel` |
 
 \* QEMU user-mode emulation reports `armv7l` even for ARMv5 containers.
+
+\*\* QEMU/Docker on amd64 host reports host architecture for 32-bit x86 containers.

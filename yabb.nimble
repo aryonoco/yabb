@@ -3,7 +3,7 @@
 #
 # Package
 
-version = "0.5.4"
+version = "0.5.5"
 author = "Aryan Ameri"
 description = "Yet Another BTRFS Backup"
 license = "MPL 2.0"
@@ -115,12 +115,26 @@ task releaseAmd64, "Build static binary for x86_64 Linux":
     " -o:bin/yabb-linux-amd64 src/yabb.nim"
   echo "Built: bin/yabb-linux-amd64"
 
+task releaseAmd64V4, "Build static binary for x86_64-v4 Linux (Zen4 optimised)":
+  exec "nim c " & releaseFlags & " " & zigccFlags & " " &
+    "--passC:'-target x86_64-linux-musl' " & "--passL:'-target x86_64-linux-musl' " &
+    "--passC:-march=x86-64-v4 --passC:-mtune=znver4 " & ltoFlags &
+    " -o:bin/yabb-linux-amd64_v4 src/yabb.nim"
+  echo "Built: bin/yabb-linux-amd64_v4"
+
 task releaseArm64, "Build static binary for ARM64 Linux":
   exec "nim c " & releaseFlags & " " & zigccFlags & " " & "--cpu:arm64 " &
     "--passC:'-target aarch64-linux-musl' " & "--passL:'-target aarch64-linux-musl' " &
     "--passC:-march=armv8-a --passC:-mtune=cortex_a72 " & ltoFlags &
     " -o:bin/yabb-linux-arm64 src/yabb.nim"
   echo "Built: bin/yabb-linux-arm64"
+
+task releaseArm64V9, "Build static binary for ARM64v9 Linux (Neoverse N2 optimised)":
+  exec "nim c " & releaseFlags & " " & zigccFlags & " " & "--cpu:arm64 " &
+    "--passC:'-target aarch64-linux-musl' " & "--passL:'-target aarch64-linux-musl' " &
+    "--passC:-march=armv9-a+sve2 --passC:-mtune=neoverse_n2 " & ltoFlags &
+    " -o:bin/yabb-linux-arm64v9 src/yabb.nim"
+  echo "Built: bin/yabb-linux-arm64v9"
 
 task releaseArmhf, "Build static binary for ARMv7 Linux (armhf)":
   # Debian armhf: ARMv7-A + VFPv3 + Thumb-2 + NEON, hard-float EABI
@@ -196,15 +210,37 @@ task releaseMipsel, "Build static binary for MIPS32 LE Linux (ALT Linux mipsel)"
     " -o:bin/yabb-linux-mipsel src/yabb.nim"
   echo "Built: bin/yabb-linux-mipsel"
 
+task releaseI686, "Build static binary for x86 32-bit Linux (i686/SSE2)":
+  # Debian i386 multiarch: Pentium 4 baseline with SSE2
+  # See: https://wiki.debian.org/i386
+  exec "nim c " & releaseFlags & " " & zigccFlags & " " & "--cpu:i386 " &
+    "--passC:'-target x86-linux-musl' " & "--passL:'-target x86-linux-musl' " &
+    "--passC:-mcpu=pentium4 " & ltoFlags &
+    " -o:bin/yabb-linux-i686 src/yabb.nim"
+  echo "Built: bin/yabb-linux-i686"
+
+task releaseI586, "Build static binary for x86 32-bit Linux (i586/legacy)":
+  # Legacy i586: Pentium baseline, no SSE, no cmov
+  # For older distros and hardware without SSE2
+  exec "nim c " & releaseFlags & " " & zigccFlags & " " & "--cpu:i386 " &
+    "--passC:'-target x86-linux-musl' " & "--passL:'-target x86-linux-musl' " &
+    "--passC:-mcpu=i586 " & ltoFlags &
+    " -o:bin/yabb-linux-i586 src/yabb.nim"
+  echo "Built: bin/yabb-linux-i586"
+
 task releaseAll, "Build static binaries for all Linux architectures":
   exec "nimble releaseAmd64"
+  exec "nimble releaseAmd64V4"
   exec "nimble releaseArm64"
+  exec "nimble releaseArm64V9"
   exec "nimble releaseArmhf"
   exec "nimble releaseRiscv64"
   exec "nimble releasePpc64el"
   exec "nimble releaseLoong64"
   exec "nimble releaseMips64el"
   exec "nimble releaseMipsel"
+  exec "nimble releaseI686"
+  exec "nimble releaseI586"
   echo ""
   echo "All architectures built:"
   exec "ls -lh bin/yabb-linux-*"

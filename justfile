@@ -158,6 +158,8 @@ release: && _clean-cache
         loongarch64) nimble releaseLoong64 && cp bin/yabb-linux-loong64 bin/yabb ;;
         mips64el) nimble releaseMips64el && cp bin/yabb-linux-mips64el bin/yabb ;;
         mipsel) nimble releaseMipsel && cp bin/yabb-linux-mipsel bin/yabb ;;
+        i686) nimble releaseI686 && cp bin/yabb-linux-i686 bin/yabb ;;
+        i586) nimble releaseI586 && cp bin/yabb-linux-i586 bin/yabb ;;
         *) echo "Unsupported architecture: $ARCH" && exit 1 ;;
     esac
     echo "Release build: bin/yabb (musl static, optimised, stripped)"
@@ -175,10 +177,20 @@ build-amd64:
     @echo "Cross-compiling for x86_64..."
     nimble releaseAmd64
 
+# Build for x86_64-v4 Linux (Zen4 optimised, AVX-512)
+build-amd64_v4:
+    @echo "Cross-compiling for x86_64-v4 (Zen4)..."
+    nimble releaseAmd64V4
+
 # Build for ARM64 Linux (static musl)
 build-arm64:
     @echo "Cross-compiling for ARM64..."
     nimble releaseArm64
+
+# Build for ARM64v9 Linux (Neoverse N2 optimised, SVE2)
+build-arm64v9:
+    @echo "Cross-compiling for ARM64v9 (Neoverse N2)..."
+    nimble releaseArm64V9
 
 # Build for ARMv7 Linux (static musl, hard-float, NEON - Debian armhf)
 # Note: Zig's musl requires NEON, so this won't run on NEON-less ARMv7 devices
@@ -220,9 +232,19 @@ build-mipsel:
     @echo "Cross-compiling for MIPS32EL (ALT Linux mipsel)..."
     nimble releaseMipsel
 
+# Build for x86 32-bit Linux (i686/SSE2 - Debian i386 multiarch)
+build-i686:
+    @echo "Cross-compiling for i686 (SSE2)..."
+    nimble releaseI686
+
+# Build for x86 32-bit Linux (i586/legacy - no SSE, no cmov)
+build-i586:
+    @echo "Cross-compiling for i586 (legacy)..."
+    nimble releaseI586
+
 # Release binaries for all Linux architectures
 # Note: armel is CI-only (Bootlin toolchain not available locally)
-release-all: build-amd64 build-arm64 build-armhf build-riscv64 build-ppc64el build-loong64 build-mips64el build-mipsel
+release-all: build-amd64 build-amd64_v4 build-arm64 build-arm64v9 build-armhf build-riscv64 build-ppc64el build-loong64 build-mips64el build-mipsel build-i686 build-i586
     @echo ""
     @echo "All architectures built (armel is CI-only):"
     @ls -lh bin/yabb-linux-* 2>/dev/null || echo "No binaries found"
