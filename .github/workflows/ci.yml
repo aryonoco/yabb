@@ -107,15 +107,9 @@ jobs:
 
       - name: Install shfmt and shellcheck
         run: |
-          # Install shellcheck from apt (0.10.0 on Ubuntu 24.04)
+          # Install from apt (Ubuntu 24.04: shellcheck 0.10.0, shfmt 3.8.0)
           sudo apt-get update
-          sudo apt-get install -y shellcheck
-
-          # Install shfmt from GitHub releases
-          curl -fsSL "https://github.com/mvdan/sh/releases/download/v${{ env.SHFMT_VERSION }}/shfmt_v${{ env.SHFMT_VERSION }}_linux_amd64" \
-            -o /tmp/shfmt
-          sudo install -m 755 /tmp/shfmt /usr/local/bin/shfmt
-          rm /tmp/shfmt
+          sudo apt-get install -y shellcheck shfmt
 
           # Verify installations
           shfmt --version

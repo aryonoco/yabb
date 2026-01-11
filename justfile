@@ -118,6 +118,7 @@ install:
     @echo "Installing project dependencies..."
     nimble refresh
     nimble install -d --accept
+    nimble setup
     @echo "Dependencies installed"
 
 # Update all dependencies
