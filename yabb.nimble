@@ -3,7 +3,7 @@
 #
 # Package
 
-version = "0.5.1"
+version = "0.5.2"
 author = "Aryan Ameri"
 description = "Yet Another BTRFS Backup"
 license = "MPL 2.0"

@@ -56,8 +56,8 @@
       "type": "volume"
     },
     {
-      "source": "${localEnv:HOME}${localEnv:USERPROFILE}/.ssh",
-      "target": "/home/vscode/.ssh",
+      "source": "${localEnv:SSH_AUTH_SOCK}",
+      "target": "/ssh-agent",
       "type": "bind"
     }
   ],
@@ -70,7 +70,8 @@
     "RISCSTAR_VERSION": "15.2-r1",
     "UV_VERSION": "0.9.24",
     "EDITOR": "code --wait",
-    "VISUAL": "code --wait"
+    "VISUAL": "code --wait",
+    "SSH_AUTH_SOCK": "/ssh-agent"
   },
 
   "remoteEnv": {
