@@ -150,10 +150,10 @@ release: && _clean-cache
     case "$ARCH" in
         x86_64)  nimble releaseAmd64 && cp bin/yabb-linux-amd64 bin/yabb ;;
         aarch64) nimble releaseArm64 && cp bin/yabb-linux-arm64 bin/yabb ;;
-        armv7l)  nimble releaseArmv7l && cp bin/yabb-linux-armv7l bin/yabb ;;
+        armv7l)  nimble releaseArmhf && cp bin/yabb-linux-armhf bin/yabb ;;
         armv5l)  echo "ERROR: ARMv5 builds are CI-only (Bootlin toolchain)" && exit 1 ;;
         riscv64) nimble releaseRiscv64 && cp bin/yabb-linux-riscv64 bin/yabb ;;
-        ppc64le) nimble releasePpc64le && cp bin/yabb-linux-ppc64le bin/yabb ;;
+        ppc64le) nimble releasePpc64el && cp bin/yabb-linux-ppc64el bin/yabb ;;
         loongarch64) nimble releaseLoong64 && cp bin/yabb-linux-loong64 bin/yabb ;;
         mips64el) nimble releaseMips64el && cp bin/yabb-linux-mips64el bin/yabb ;;
         mipsel) nimble releaseMipsel && cp bin/yabb-linux-mipsel bin/yabb ;;
@@ -181,13 +181,13 @@ build-arm64:
 
 # Build for ARMv7 Linux (static musl, hard-float, NEON - Debian armhf)
 # Note: Zig's musl requires NEON, so this won't run on NEON-less ARMv7 devices
-build-armv7l:
+build-armhf:
     @echo "Cross-compiling for ARMv7 (armhf)..."
-    nimble releaseArmv7l
+    nimble releaseArmhf
 
 # Build for ARMv5 Linux (static musl, soft-float - Debian armel)
 # NOTE: CI-only - Bootlin toolchain not available locally
-build-armv5l:
+build-armel:
     @echo "Cross-compiling for ARMv5 (armel) - CI only..."
     @echo "ERROR: ARMv5 builds require Bootlin toolchain (amd64-only)"
     @echo "This target is only available in GitHub Actions CI"
@@ -200,9 +200,9 @@ build-riscv64:
     nimble releaseRiscv64
 
 # Build for PowerPC 64-bit LE Linux (static musl)
-build-ppc64le:
-    @echo "Cross-compiling for PPC64LE..."
-    nimble releasePpc64le
+build-ppc64el:
+    @echo "Cross-compiling for PPC64EL..."
+    nimble releasePpc64el
 
 # Build for LoongArch64 Linux (static musl)
 build-loong64:
@@ -220,10 +220,10 @@ build-mipsel:
     nimble releaseMipsel
 
 # Release binaries for all Linux architectures
-# Note: armv5l is CI-only (Bootlin toolchain not available locally)
-release-all: build-amd64 build-arm64 build-armv7l build-riscv64 build-ppc64le build-loong64 build-mips64el build-mipsel
+# Note: armel is CI-only (Bootlin toolchain not available locally)
+release-all: build-amd64 build-arm64 build-armhf build-riscv64 build-ppc64el build-loong64 build-mips64el build-mipsel
     @echo ""
-    @echo "All architectures built (armv5l is CI-only):"
+    @echo "All architectures built (armel is CI-only):"
     @ls -lh bin/yabb-linux-* 2>/dev/null || echo "No binaries found"
 
 # =============================================================================
@@ -316,6 +316,54 @@ ci-verbose: reuse fmt-check lint test-verbose
     @echo "============================================"
     @echo "All CI checks passed!"
     @echo "============================================"
+
+# =============================================================================
+# RELEASE
+# =============================================================================
+
+# Create a release: update version, run CI, commit, push, tag, and push tag
+tag VERSION MESSAGE="":
+    #!/usr/bin/env bash
+    set -euo pipefail
+
+    # Validate version format
+    if [[ ! "{{VERSION}}" =~ ^v[0-9]+\.[0-9]+\.[0-9]+(-.*)?$ ]]; then
+        echo "ERROR: Version must match vX.Y.Z or vX.Y.Z-suffix (e.g., v0.5.0, v1.0.0-rc1)"
+        exit 1
+    fi
+
+    # Extract version without 'v' prefix
+    SEMVER="{{VERSION}}"
+    SEMVER="${SEMVER#v}"
+    echo "Updating version to $SEMVER..."
+
+    # Update version in yabb.nimble
+    sed -i "s/^version = \".*\"/version = \"$SEMVER\"/" yabb.nimble
+    echo "Updated yabb.nimble"
+
+    # Run CI first
+    echo "Running CI checks..."
+    just ci
+
+    # Commit changes
+    MSG="${MESSAGE:-Release {{VERSION}}}"
+    echo "Committing changes..."
+    git add .
+    git commit -m "$MSG"
+    echo "Pushing to remote..."
+    git push
+
+    # Create and push tag
+    echo "Creating tag {{VERSION}}..."
+    git tag -a "{{VERSION}}" -m "Release {{VERSION}}"
+    echo "Pushing tag to remote..."
+    git push origin "{{VERSION}}"
+
+    echo ""
+    echo "============================================"
+    echo "Release {{VERSION}} complete!"
+    echo "GitHub Actions will now build and publish."
+    echo "============================================"
 
 # =============================================================================
 # DOCUMENTATION
