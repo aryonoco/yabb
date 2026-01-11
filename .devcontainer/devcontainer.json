@@ -54,11 +54,6 @@
       "source": "yabb-vscode-server",
       "target": "/home/vscode/.vscode-server",
       "type": "volume"
-    },
-    {
-      "source": "${localEnv:SSH_AUTH_SOCK}",
-      "target": "/ssh-agent",
-      "type": "bind"
     }
   ],
 
@@ -70,13 +65,11 @@
     "RISCSTAR_VERSION": "15.2-r1",
     "UV_VERSION": "0.9.24",
     "EDITOR": "code --wait",
-    "VISUAL": "code --wait",
-    "SSH_AUTH_SOCK": "/ssh-agent"
+    "VISUAL": "code --wait"
   },
 
   "remoteEnv": {
-    "PATH": "${containerEnv:PATH}:/workspaces/yabb/bin",
-    "SSH_AUTH_SOCK": "/ssh-agent"
+    "PATH": "${containerEnv:PATH}:/workspaces/yabb/bin"
   },
 
   "runArgs": [
