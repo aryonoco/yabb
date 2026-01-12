@@ -223,7 +223,8 @@ Copyright 2023-2026 Aryan Ameri.
 
 | Content | License |
 |---------|---------|
-| Source code | [MPL-2.0](LICENSES/MPL-2.0.txt) |
+| Source code (`src/`, `tests/`) | [MPL-2.0](LICENSES/MPL-2.0.txt) |
+| Scripts (`scripts/`) | [BSD-2-Clause](LICENSES/BSD-2-Clause.txt) |
 | Config/plumbing | [0BSD](LICENSES/0BSD.txt) |
 | Documentation | [CC-BY-4.0](LICENSES/CC-BY-4.0.txt) |
 

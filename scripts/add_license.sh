@@ -1,10 +1,7 @@
 #!/bin/env bash
-# SPDX-License-Identifier: MPL-2.0
+# SPDX-License-Identifier: BSD-2-Clause
 # Copyright (c) 2026 Aryan Ameri
-#
-# This Source Code Form is subject to the terms of the Mozilla Public
-# License, v. 2.0. If a copy of the MPL was not distributed with this
-# file, You can obtain one at https://mozilla.org/MPL/2.0/.
+# SPDX-FileCopyrightText: 2026 Aryan Ameri <info@ameri.me>
 #
 
 LICENSE_HEADER='# SPDX-License-Identifier: MPL-2.0

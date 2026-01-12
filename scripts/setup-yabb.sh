@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
-# SPDX-License-Identifier: MPL-2.0
-# Copyright (c) 2023-2026 Aryan Ameri
+# SPDX-License-Identifier: BSD-2-Clause
+# SPDX-FileCopyrightText: 2026 State Government of Victoria
+# SPDX-FileCopyrightText: 2026 Aryan Ameri <info@ameri.me>
 #
-# This Source Code Form is subject to the terms of the Mozilla Public
-# License, v. 2.0. If a copy of the MPL was not distributed with this
-# file, You can obtain one at https://mozilla.org/MPL/2.0/.
+# Originally developed as internal tooling at State Government of Victoria.
+# Adapted and published with permission.
 #
 #===============================================================================
 # setup-yabb.sh - YABB binary installer
@@ -48,7 +48,7 @@
 # ENVIRONMENT:
 #   TRACE=1              Enable bash debug tracing (set -x)
 #
-# LICENSE:               MPL-2.0
+# LICENSE:               BSD-2-Clause
 #===============================================================================
 
 # shellcheck enable=check-set-e-suppressed
